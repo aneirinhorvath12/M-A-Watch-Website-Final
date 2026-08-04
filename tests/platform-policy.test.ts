@@ -129,6 +129,10 @@ test("database readiness requires the migration-owned security fields", () => {
       sql: "CREATE TABLE analytics_daily (day TEXT, event TEXT, dimension_name TEXT, dimension_value TEXT, count INTEGER, PRIMARY KEY (day, event, dimension_name, dimension_value))",
     },
     {
+      name: "maintenance_state",
+      sql: "CREATE TABLE maintenance_state (id INTEGER PRIMARY KEY, last_completed_at INTEGER, updated_at INTEGER)",
+    },
+    {
       name: "applicants",
       sql: "CREATE TABLE applicants (id TEXT, submission_key TEXT NOT NULL, retention_expires_at INTEGER, deletion_requested_at INTEGER)",
     },

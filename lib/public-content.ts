@@ -1,7 +1,8 @@
 import { ensureDatabase } from "@/db/bootstrap";
 import { database, safeJson } from "@/lib/platform";
 import { normaliseTeamPhotoPath } from "@/lib/team-media";
-import { currentRecruitmentReadiness } from "@/lib/recruitment-runtime";
+import { currentRecruitmentIntakeReadiness } from "@/lib/recruitment-runtime";
+import { CURRENT_APPLICATION_PRIVACY_VERSION } from "@/lib/data-policy";
 import {
   coerceManagedContent,
   defaultForKey,
@@ -120,7 +121,7 @@ export async function getPublicApplicationSettings(): Promise<PublicApplicationS
     open: false,
     introduction: "Join an ambitious inter-university network, develop practical commercial judgement and help publish research that other students can use.",
     closedMessage: "Applications are currently closed. Please follow our channels for the next recruitment window.",
-    privacyPolicyVersion: "2026-08-04",
+    privacyPolicyVersion: CURRENT_APPLICATION_PRIVACY_VERSION,
   };
   try {
     await ensureDatabase();
@@ -139,7 +140,7 @@ export async function getPublicApplicationSettings(): Promise<PublicApplicationS
         retention_days: number | null;
       }>();
     const readiness = row
-      ? currentRecruitmentReadiness({
+      ? await currentRecruitmentIntakeReadiness({
           retentionDays: row.retention_days,
           privacyPolicyVersion: row.privacy_policy_version,
           notificationRecipients: safeJson<string[]>(

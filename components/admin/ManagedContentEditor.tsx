@@ -545,7 +545,7 @@ function ContentEditor({ entry }: { entry: ManagedEditorEntry }) {
           <p className={styles.panelDescription}>{entry.description}</p>
         </div>
         <span className={`${styles.status} ${entry.publishedAt ? styles.statusGood : styles.statusWarning}`}>
-          {entry.publishedAt ? "Published" : "Draft only"}
+          {entry.publishedAt ? "Published version exists; draft may differ" : "No published version"}
         </span>
       </div>
       <div className={styles.panelBody}>

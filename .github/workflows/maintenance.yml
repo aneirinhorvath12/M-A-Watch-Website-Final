@@ -1,0 +1,46 @@
+name: Scheduled maintenance
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-maintenance
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Run protected maintenance cycle
+        env:
+          MAINTENANCE_ENDPOINT: ${{ secrets.MAINTENANCE_ENDPOINT }}
+          MAINTENANCE_TOKEN: ${{ secrets.MAINTENANCE_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${MAINTENANCE_ENDPOINT}" || -z "${MAINTENANCE_TOKEN}" ]]; then
+            echo "MAINTENANCE_ENDPOINT and MAINTENANCE_TOKEN repository secrets are required."
+            exit 1
+          fi
+          if [[ ! "${MAINTENANCE_ENDPOINT}" =~ ^https://[^[:space:]]+/api/maintenance$ ]]; then
+            echo "MAINTENANCE_ENDPOINT must be the deployed HTTPS /api/maintenance URL."
+            exit 1
+          fi
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --max-time 60 \
+            --retry 2 \
+            --retry-all-errors \
+            --request POST \
+            --header "Authorization: Bearer ${MAINTENANCE_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data '{}' \
+            "${MAINTENANCE_ENDPOINT}"

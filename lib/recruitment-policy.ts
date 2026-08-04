@@ -7,6 +7,10 @@ import {
   resolveMalwareProvider,
   type MalwareProviderSecrets,
 } from "@/lib/malware-provider";
+import {
+  APPLICANT_RETENTION_DAYS,
+  CURRENT_APPLICATION_PRIVACY_VERSION,
+} from "@/lib/data-policy";
 
 export const MIN_APPLICANT_RETENTION_DAYS = 1;
 export const MAX_APPLICANT_RETENTION_DAYS = 3_650;
@@ -15,9 +19,10 @@ export type RecruitmentRuntimeConfig = EmailProviderSecrets &
   MalwareProviderSecrets & {
   NEXT_PUBLIC_SITE_URL?: string;
   APPLICATION_INTAKE_ENABLED?: string;
+  MAINTENANCE_SCHEDULER_ENABLED?: string;
   APPROVED_APPLICANT_RETENTION_DAYS?: string;
   APPROVED_APPLICATION_PRIVACY_VERSION?: string;
-  };
+};
 
 export type RecruitmentSettings = {
   retentionDays: number | null;
@@ -30,6 +35,8 @@ export const RECRUITMENT_READINESS_MESSAGES = {
     "Application intake has not been enabled for this environment.",
   retentionPolicy:
     "The approved applicant retention period is missing or does not match these settings.",
+  retentionAutomation:
+    "Automatic applicant deletion has not been configured and approved for this environment.",
   privacyPolicy:
     "The approved privacy policy version is missing or does not match these settings.",
   email:
@@ -102,13 +109,21 @@ export function recruitmentReadiness(
   }
   if (
     settings.retentionDays === null ||
+    settings.retentionDays !== APPLICANT_RETENTION_DAYS ||
     configuredRetentionDays === null ||
     settings.retentionDays !== configuredRetentionDays
   ) {
     issues.push("retentionPolicy");
   }
   if (
+    runtime.MAINTENANCE_SCHEDULER_ENABLED?.trim().toLowerCase() !== "true"
+  ) {
+    issues.push("retentionAutomation");
+  }
+  if (
     !settings.privacyPolicyVersion.trim() ||
+    settings.privacyPolicyVersion.trim() !==
+      CURRENT_APPLICATION_PRIVACY_VERSION ||
     runtime.APPROVED_APPLICATION_PRIVACY_VERSION?.trim() !==
       settings.privacyPolicyVersion.trim()
   ) {

@@ -10,6 +10,7 @@ const completeRuntime = {
   NEXT_PUBLIC_SITE_URL: "https://mawatch.example",
   INITIAL_SUPER_USER_EMAIL: "owner@mawatch.example",
   ANALYTICS_ENABLED: "true",
+  MAINTENANCE_SCHEDULER_ENABLED: "true",
   RESEND_API_KEY: "re_secret",
   EMAIL_FROM: "M&A Watch <updates@mawatch.example>",
   MALWARE_SCAN_WEBHOOK_URL: "https://scanner.example/scan",
@@ -31,6 +32,7 @@ test("production readiness identifies missing capabilities without values", () =
     "canonical_site_url",
     "initial_super_user",
     "first_party_analytics",
+    "maintenance_scheduler",
     "transactional_email",
     "malware_scanner",
     "pdf_parser",
@@ -48,11 +50,13 @@ test("production adapter endpoints must use HTTPS and include credentials", () =
     MAINTENANCE_HEARTBEAT_URL: "http://heartbeat.example/ping",
     MAINTENANCE_ALERT_WEBHOOK_TOKEN: "",
     ANALYTICS_ENABLED: "false",
+    MAINTENANCE_SCHEDULER_ENABLED: "false",
   });
 
   assert.deepEqual(missing, [
     "canonical_site_url",
     "first_party_analytics",
+    "maintenance_scheduler",
     "malware_scanner",
     "pdf_parser",
     "maintenance_heartbeat",

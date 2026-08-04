@@ -52,17 +52,19 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
-  margin: 0 0.4rem 1.5rem;
+  min-width: 0;
+  gap: 0.65rem;
+  margin: 0 0.35rem 1.35rem;
   color: white;
   text-decoration: none;
 }
 
 .brandMark {
+  flex: 0 0 auto;
   display: grid;
   place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2rem;
+  height: 2rem;
   border: 1px solid #75847d;
   border-radius: 50%;
   font-family: Georgia, serif;
@@ -71,6 +73,7 @@
 }
 
 .brandText {
+  min-width: 0;
   line-height: 1.05;
 }
 
@@ -81,14 +84,15 @@
 
 .brandText strong {
   font-family: Georgia, serif;
-  font-size: 1.05rem;
+  font-size: 0.98rem;
+  white-space: nowrap;
 }
 
 .brandText span {
   margin-top: 0.2rem;
   color: #aebbb5;
-  font-size: 0.68rem;
-  letter-spacing: 0.12em;
+  font-size: 0.61rem;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
@@ -792,6 +796,117 @@
   margin: 0 0 0 auto;
 }
 
+.contentNavigation,
+.contentSectionTabs {
+  display: grid;
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.contentNavigation {
+  gap: 1.5rem;
+}
+
+.contentNavigationGroup h2 {
+  margin: 0 0 0.65rem;
+  color: var(--admin-muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.contentNavigationGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.contentNavCard {
+  display: flex;
+  min-height: 11rem;
+  flex-direction: column;
+  border: 1px solid var(--admin-line);
+  border-radius: 0.55rem;
+  background: var(--admin-white);
+  color: var(--admin-ink);
+  padding: 1.15rem;
+  text-decoration: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.contentNavCard:hover,
+.contentNavCard:focus-visible {
+  border-color: #9eaaa4;
+  box-shadow: 0 0.7rem 1.5rem rgb(23 33 30 / 0.08);
+  transform: translateY(-2px);
+}
+
+.contentNavCardTitle {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.contentNavCardDescription {
+  margin: 0.55rem 0 1rem;
+  color: var(--admin-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.contentNavCardMeta {
+  margin-top: auto;
+  color: var(--admin-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.contentSectionTabs {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border-bottom: 1px solid var(--admin-line);
+  padding-bottom: 0.75rem;
+}
+
+.contentSectionTab {
+  display: grid;
+  align-content: center;
+  border-radius: 0.4rem;
+  color: var(--admin-muted);
+  padding: 0.65rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+
+.contentSectionTabGroup {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-size: 0.6rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  opacity: 0.72;
+  text-transform: uppercase;
+}
+
+.contentSectionTab:hover,
+.contentSectionTab:focus-visible {
+  background: var(--admin-soft);
+  color: var(--admin-ink);
+}
+
+.contentSectionTabActive {
+  background: var(--admin-accent);
+  color: white;
+}
+
+.contentSectionTabActive:hover,
+.contentSectionTabActive:focus-visible {
+  background: var(--admin-accent-dark);
+  color: white;
+}
+
 .codeValue {
   border-radius: 0.3rem;
   background: #eef1ef;
@@ -1038,6 +1153,8 @@
   .fieldQuarter { grid-column: span 6; }
   .editorWorkspace { grid-template-columns: 1fr; }
   .editorPreview { position: static; }
+  .contentNavigationGrid { grid-template-columns: 1fr; }
+  .contentNavCard { min-height: 0; }
 }
 
 @media (max-width: 760px) {
@@ -1069,6 +1186,11 @@
   .contentCardHeader { align-items: flex-start; flex-direction: column; }
   .contentActions { position: static; }
   .contentActions .hint { width: 100%; margin-left: 0; }
+  .contentSectionTabs {
+    display: flex;
+    overflow-x: auto;
+  }
+  .contentSectionTab { flex: 0 0 auto; }
 }
 
 @media (max-width: 480px) {
@@ -1078,5 +1200,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skipLink { transition: none; }
+  .skipLink,
+  .contentNavCard { transition: none; }
 }

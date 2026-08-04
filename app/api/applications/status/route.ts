@@ -1,6 +1,7 @@
 import { ensureDatabase } from "@/db/bootstrap";
 import { database, safeJson } from "@/lib/platform";
-import { currentRecruitmentReadiness } from "@/lib/recruitment-runtime";
+import { currentRecruitmentIntakeReadiness } from "@/lib/recruitment-runtime";
+import { CURRENT_APPLICATION_PRIVACY_VERSION } from "@/lib/data-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function GET() {
       retention_days: number | null;
     }>();
   const readiness = settings
-    ? currentRecruitmentReadiness({
+    ? await currentRecruitmentIntakeReadiness({
         retentionDays: settings.retention_days,
         privacyPolicyVersion: settings.privacy_policy_version,
         notificationRecipients: safeJson<string[]>(
@@ -36,7 +37,8 @@ export async function GET() {
       open: Boolean(settings?.open) && Boolean(readiness?.ready),
       introduction: settings?.introduction ?? "",
       closedMessage: settings?.closed_message ?? "",
-      privacyPolicyVersion: settings?.privacy_policy_version ?? "2026-08-04",
+      privacyPolicyVersion:
+        settings?.privacy_policy_version ?? CURRENT_APPLICATION_PRIVACY_VERSION,
     },
     { headers: { "Cache-Control": "no-store, max-age=0" } },
   );

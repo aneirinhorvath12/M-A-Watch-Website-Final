@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { trackAnalytics } from "./analytics-tracker";
+import { APPLICANT_RETENTION_DAYS } from "@/lib/data-policy";
 
 type FieldName = "name" | "university" | "email" | "division" | "cv" | "privacyConsent";
 type FieldErrors = Partial<Record<FieldName, string>>;
@@ -200,7 +201,7 @@ export function ApplicationForm() {
       <div className="consent-field">
         <input id="privacyConsent" name="privacyConsent" type="checkbox" required {...errorProps("privacyConsent")} />
         <label htmlFor="privacyConsent">
-          I have read the <Link href="/privacy" target="_blank">privacy notice</Link> and consent to M&amp;A Watch processing my data for recruitment.
+          I have read and understand the <Link href="/privacy" target="_blank">privacy notice</Link> and <Link href="/retention" target="_blank">retention policy</Link>, including that M&amp;A Watch will use my information for recruitment for up to {APPLICANT_RETENTION_DAYS} days.
         </label>
       </div>
       {errors.privacyConsent ? <p className="form-error consent-error" id="privacyConsent-error">{errors.privacyConsent}</p> : null}

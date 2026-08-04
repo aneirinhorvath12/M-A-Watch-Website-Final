@@ -304,3 +304,10 @@ export const analyticsDaily = sqliteTable(
     index("idx_analytics_daily_event_day").on(table.event, table.day),
   ],
 );
+
+/** Coarse operational heartbeat only; contains no applicant or user data. */
+export const maintenanceState = sqliteTable("maintenance_state", {
+  id: integer("id").primaryKey().default(1),
+  lastCompletedAt: integer("last_completed_at"),
+  updatedAt: integer("updated_at").notNull(),
+});

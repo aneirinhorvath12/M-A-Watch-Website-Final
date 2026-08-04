@@ -66,6 +66,7 @@ Sites environment controls and must never be committed.
 | `ANALYTICS_ENABLED` | Enables cookie-free first-party daily aggregate counters; any value other than exact `true` disables collection | Explicit approval required before production enforcement |
 | `INITIAL_SUPER_USER_EMAIL` | The only identity allowed to create the first Super User when the user table is empty | Required before first admin sign-in |
 | `MAINTENANCE_TOKEN` | Bearer secret for an external scheduler calling `POST /api/maintenance` | Required only for the HTTP scheduler path |
+| `MAINTENANCE_SCHEDULER_ENABLED` | Explicit assertion that one recurring maintenance scheduler is enabled and monitored | Set `true` only after provisioning and a successful test run |
 | `MAINTENANCE_HEARTBEAT_URL` | HTTPS check-in destination for completed scheduled maintenance | Monitoring destination not configured |
 | `MAINTENANCE_ALERT_WEBHOOK_URL`, `MAINTENANCE_ALERT_WEBHOOK_TOKEN` | Authenticated HTTPS incident destination for scheduler and aggregate job failures | Monitoring destination not configured |
 | `RESEND_API_KEY`, `EMAIL_FROM` | Recommended direct transactional email delivery | Provider not configured |
@@ -103,6 +104,12 @@ aggregate report at `/admin/analytics`.
 - The Worker exports a scheduled handler for due publications and queued jobs.
   A recurring production trigger still has to be provisioned by the hosting
   owner.
+- As a deployable fallback, `.github/workflows/maintenance.yml` calls the
+  protected maintenance endpoint every five minutes. Configure the repository
+  secrets `MAINTENANCE_ENDPOINT` (the full HTTPS `/api/maintenance` URL) and
+  `MAINTENANCE_TOKEN`, run it manually once, then set the hosted
+  `MAINTENANCE_SCHEDULER_ENABLED=true`. Enable exactly one routine scheduler;
+  keep the other path only as a recovery option.
 - An external scheduler can instead call `POST /api/maintenance` with
   `Authorization: Bearer <MAINTENANCE_TOKEN>`.
 - Background jobs use atomic claims, a five-minute lease, per-claim fencing

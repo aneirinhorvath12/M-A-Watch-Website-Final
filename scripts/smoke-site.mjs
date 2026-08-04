@@ -23,6 +23,7 @@ const publicRoutes = [
   "/team",
   "/info",
   "/privacy",
+  "/retention",
   "/terms",
   "/accessibility",
   "/robots.txt",

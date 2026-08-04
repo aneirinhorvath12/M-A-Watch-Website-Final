@@ -3,6 +3,7 @@ import { apiError, authorizeAdminRequest } from "@/lib/admin-api";
 import { writeAudit } from "@/lib/audit";
 import { database, privateFiles } from "@/lib/platform";
 import { isApplicantCvKey } from "@/lib/recruitment-policy";
+import { activeApplicantRetentionSql } from "@/lib/applicant-retention";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +16,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!auth.ok) return auth.response;
   await ensureDatabase();
   const { id } = await params;
+  const now = Date.now();
   const applicant = await database()
-    .prepare("SELECT id, cv_key, cv_filename, deletion_requested_at FROM applicants WHERE id = ? LIMIT 1")
-    .bind(id)
+    .prepare(`SELECT id, cv_key, cv_filename, deletion_requested_at FROM applicants WHERE id = ? AND ${activeApplicantRetentionSql("applicants")} LIMIT 1`)
+    .bind(id, now)
     .first<{ id: string; cv_key: string; cv_filename: string; deletion_requested_at: number | null }>();
   if (!applicant) return apiError("Applicant CV not found.", 404);
   if (!isApplicantCvKey(applicant.id, applicant.cv_key)) {

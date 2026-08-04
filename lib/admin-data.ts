@@ -1,6 +1,7 @@
 import { ensureDatabase } from "@/db/bootstrap";
 import { d1LikePattern } from "@/lib/d1-query";
 import { database, safeJson } from "@/lib/platform";
+import { activeApplicantRetentionSql } from "@/lib/applicant-retention";
 
 export const APPLICANT_STATUSES = [
   "new",
@@ -103,15 +104,21 @@ export type ApplicantAdminRow = {
   duplicate_count: number;
 };
 
-export async function getApplicantAdmin(id: string): Promise<ApplicantAdminRow | null> {
+export async function getApplicantAdmin(
+  id: string,
+  now = Date.now(),
+): Promise<ApplicantAdminRow | null> {
   await ensureDatabase();
   return database()
     .prepare(
       `SELECT a.*,
-        (SELECT COUNT(*) FROM applicants duplicate WHERE duplicate.email = a.email) AS duplicate_count
-       FROM applicants a WHERE a.id = ? LIMIT 1`,
+        (SELECT COUNT(*) FROM applicants duplicate
+         WHERE duplicate.email = a.email
+           AND ${activeApplicantRetentionSql("duplicate")}) AS duplicate_count
+       FROM applicants a
+       WHERE a.id = ? AND ${activeApplicantRetentionSql("a")} LIMIT 1`,
     )
-    .bind(id)
+    .bind(now, id, now)
     .first<ApplicantAdminRow>();
 }
 
@@ -129,10 +136,11 @@ export type ApplicantListFilters = {
 
 export async function listApplicants(filters: ApplicantListFilters): Promise<ApplicantAdminRow[]> {
   await ensureDatabase();
+  const now = Date.now();
   const conditions: string[] = filters.includeDeletionPending
-    ? []
-    : ["a.deletion_requested_at IS NULL"];
-  const bindings: unknown[] = [];
+    ? [activeApplicantRetentionSql("a")]
+    : ["a.deletion_requested_at IS NULL", activeApplicantRetentionSql("a")];
+  const bindings: unknown[] = [now];
 
   const q = filters.q?.trim().slice(0, 160);
   if (q) {
@@ -177,12 +185,14 @@ export async function listApplicants(filters: ApplicantListFilters): Promise<App
   }[filters.sort ?? "newest"] ?? "a.submitted_at DESC";
   const limit = Math.min(500, Math.max(1, filters.limit ?? 100));
   const sql = `SELECT a.*,
-      (SELECT COUNT(*) FROM applicants duplicate WHERE duplicate.email = a.email) AS duplicate_count
+      (SELECT COUNT(*) FROM applicants duplicate
+       WHERE duplicate.email = a.email
+         AND ${activeApplicantRetentionSql("duplicate")}) AS duplicate_count
     FROM applicants a
     ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
     ORDER BY ${sort} LIMIT ${limit}`;
   const statement = database().prepare(sql);
-  const result = bindings.length ? await statement.bind(...bindings).all<ApplicantAdminRow>() : await statement.all<ApplicantAdminRow>();
+  const result = await statement.bind(now, ...bindings).all<ApplicantAdminRow>();
   return result.results;
 }
 

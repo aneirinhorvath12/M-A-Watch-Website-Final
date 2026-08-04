@@ -1,7 +1,14 @@
 import { ActionForm } from "@/components/admin/ActionForm";
 import { PageHeader, StatusBadge, adminStyles as styles } from "@/components/admin/AdminUI";
+import {
+  APPLICANT_RETENTION_DAYS,
+  CURRENT_APPLICATION_PRIVACY_VERSION,
+} from "@/lib/data-policy";
 import { database, safeJson } from "@/lib/platform";
-import { currentRecruitmentReadiness } from "@/lib/recruitment-runtime";
+import {
+  currentRecruitmentOperationsStatus,
+  currentRecruitmentIntakeReadiness,
+} from "@/lib/recruitment-runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +27,12 @@ export default async function ApplicationSettingsPage() {
   ).first<SettingsRow>();
   const recipients = safeJson<string[]>(settings?.notification_recipients, []);
   const configuredOpen = Boolean(settings?.open);
-  const readiness = currentRecruitmentReadiness({
+  const readiness = await currentRecruitmentIntakeReadiness({
     retentionDays: settings?.retention_days ?? null,
     privacyPolicyVersion: settings?.privacy_policy_version ?? "",
     notificationRecipients: recipients,
   });
+  const operations = currentRecruitmentOperationsStatus();
   const open = configuredOpen && readiness.ready;
 
   return (
@@ -50,10 +58,21 @@ export default async function ApplicationSettingsPage() {
               <div className={styles.fieldWide}><label className={styles.label} htmlFor="introduction">Open-state introduction</label><textarea className={styles.textarea} id="introduction" name="introduction" defaultValue={settings?.introduction ?? ""} maxLength={4000} required /></div>
               <div className={styles.fieldWide}><label className={styles.label} htmlFor="closedMessage">Closed-state message</label><textarea className={styles.textarea} id="closedMessage" name="closedMessage" defaultValue={settings?.closed_message ?? ""} maxLength={2000} required /></div>
               <div className={styles.fieldHalf}><label className={styles.label} htmlFor="notificationRecipients">Admin notification recipients</label><textarea className={styles.textarea} id="notificationRecipients" name="notificationRecipients" defaultValue={recipients.join("\n")} placeholder="one@email.org per line" /><span className={styles.hint}>New-application notices are queued without attaching the CV.</span></div>
-              <div className={styles.fieldHalf}><label className={styles.label} htmlFor="privacyPolicyVersion">Privacy policy version</label><input className={styles.input} id="privacyPolicyVersion" name="privacyPolicyVersion" defaultValue={settings?.privacy_policy_version ?? "2026-08-04"} maxLength={60} required /><span className={styles.hint}>Stored with each applicant’s acknowledgement.</span></div>
-              <div className={styles.fieldHalf}><label className={styles.label} htmlFor="retentionDays">Applicant retention (days)</label><input className={styles.input} id="retentionDays" name="retentionDays" type="number" min="1" max="3650" step="1" defaultValue={settings?.retention_days ?? ""} /><span className={styles.hint}>Must match the organisation-approved retention period before intake can open. Each application receives a fixed deletion date.</span></div>
+              <div className={styles.fieldHalf}><label className={styles.label} htmlFor="privacyPolicyVersion">Privacy policy version</label><input className={styles.input} id="privacyPolicyVersion" name="privacyPolicyVersion" defaultValue={CURRENT_APPLICATION_PRIVACY_VERSION} maxLength={60} required /><span className={styles.hint}>Current published version: {CURRENT_APPLICATION_PRIVACY_VERSION}. Stored value: {settings?.privacy_policy_version || "none"}. Saving updates the acknowledgement used for future applications.</span></div>
+              <div className={styles.fieldHalf}><label className={styles.label} htmlFor="retentionDays">Applicant retention (days)</label><input className={styles.input} id="retentionDays" name="retentionDays" type="number" min={APPLICANT_RETENTION_DAYS} max={APPLICANT_RETENTION_DAYS} step="1" defaultValue={settings?.retention_days ?? APPLICANT_RETENTION_DAYS} /><span className={styles.hint}>The published policy is {APPLICANT_RETENTION_DAYS} days. Each application receives a fixed automatic deletion date.</span></div>
             </div>
           </ActionForm>
+        </div>
+      </section>
+
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}><h2 className={styles.panelTitle}>Operational readiness</h2><span className={styles.panelMeta}>Secret values are never shown here</span></div>
+        <div className={styles.panelBody}>
+          <dl className={styles.detailList}>
+            <div className={styles.detailItem}><dt>Transactional email</dt><dd><StatusBadge value={operations.emailProvider ? "Credentials detected" : "Required"} /> {operations.emailProvider ? `${operations.emailProvider} credentials are present but still require a successful delivery test.` : "Add RESEND_API_KEY and EMAIL_FROM using a verified sender domain, or configure the secure custom webhook pair."}</dd></div>
+            <div className={styles.detailItem}><dt>Malware scanning</dt><dd><StatusBadge value={operations.malwareProvider ? "Credentials detected" : "Required"} /> {operations.malwareProvider ? `${operations.malwareProvider} credentials are present but clean, rejected and timeout paths still require testing.` : "Add CLOUDMERSIVE_API_KEY as a hosted secret, or configure the secure custom scanner webhook pair. Files remain quarantined until an explicit clean result."}</dd></div>
+            <div className={styles.detailItem}><dt>Automatic retention</dt><dd><StatusBadge value={operations.maintenanceSchedulerApproved ? "Approval recorded" : "Required"} /> {operations.maintenanceSchedulerApproved ? "Scheduler provisioning has been recorded; confirm its latest heartbeat before relying on it." : "Configure the recurring maintenance workflow and monitoring, run it successfully, then set MAINTENANCE_SCHEDULER_ENABLED=true. Expiry dates alone do not delete records."}</dd></div>
+          </dl>
         </div>
       </section>
 

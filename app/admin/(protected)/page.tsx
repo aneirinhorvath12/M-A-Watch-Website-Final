@@ -3,8 +3,12 @@ import { PageHeader, Panel, StatCard, StatusBadge, adminStyles as styles } from 
 import { requireAdmin } from "@/lib/admin-auth";
 import { database, safeJson } from "@/lib/platform";
 import { formatAdminDate, titleCaseStatus } from "@/lib/admin-data";
-import { currentRecruitmentReadiness } from "@/lib/recruitment-runtime";
+import { currentRecruitmentIntakeReadiness } from "@/lib/recruitment-runtime";
 import { LEGACY_SOURCE_WORKFLOW_MESSAGES } from "@/lib/publication-warnings";
+import {
+  activeApplicantRetentionSql,
+  applicantRetentionRequestTime,
+} from "@/lib/applicant-retention";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +36,7 @@ export default async function AdminDashboardPage({
 }) {
   const actor = await requireAdmin("/admin");
   const params = await searchParams;
+  const now = applicantRetentionRequestTime();
   const [review, attention, newApplicants, scheduled, applicationSettings, publications, activity, statusCounts, jobs] = await Promise.all([
     database().prepare("SELECT COUNT(*) AS count FROM publications WHERE status = 'review'").first<CountRow>(),
     database().prepare(
@@ -42,7 +47,7 @@ export default async function AdminDashboardPage({
             WHERE warning.value NOT IN (?, ?)
           )`,
     ).bind(...LEGACY_SOURCE_WORKFLOW_MESSAGES).first<CountRow>(),
-    database().prepare("SELECT COUNT(*) AS count FROM applicants WHERE status = 'new' AND deletion_requested_at IS NULL").first<CountRow>(),
+    database().prepare(`SELECT COUNT(*) AS count FROM applicants WHERE status = 'new' AND deletion_requested_at IS NULL AND ${activeApplicantRetentionSql("applicants")}`).bind(now).first<CountRow>(),
     database().prepare("SELECT COUNT(*) AS count FROM publications WHERE status = 'scheduled'").first<CountRow>(),
     database().prepare("SELECT open, notification_recipients, privacy_policy_version, retention_days FROM application_settings WHERE id = 1").first<{ open: number; notification_recipients: string; privacy_policy_version: string; retention_days: number | null }>(),
     database().prepare(
@@ -56,7 +61,7 @@ export default async function AdminDashboardPage({
        WHERE audit.actor_id = ? OR audit.entity_type IN ('publication', 'applicant', 'application_settings')
        ORDER BY audit.created_at DESC LIMIT 8`,
     ).bind(actor.id).all<AuditRow>(),
-    database().prepare("SELECT status, COUNT(*) AS count FROM applicants WHERE deletion_requested_at IS NULL GROUP BY status ORDER BY status").all<{ status: string; count: number }>(),
+    database().prepare(`SELECT status, COUNT(*) AS count FROM applicants WHERE deletion_requested_at IS NULL AND ${activeApplicantRetentionSql("applicants")} GROUP BY status ORDER BY status`).bind(now).all<{ status: string; count: number }>(),
     database().prepare(
       `SELECT id, type, status, attempts, error, updated_at FROM background_jobs
        WHERE type IN ('email', 'file_scan', 'publication_parse', 'applicant_delete')
@@ -64,7 +69,7 @@ export default async function AdminDashboardPage({
                 updated_at DESC LIMIT 8`,
     ).all<JobRow>(),
   ]);
-  const recruitmentReadiness = currentRecruitmentReadiness({
+  const recruitmentReadiness = await currentRecruitmentIntakeReadiness({
     retentionDays: applicationSettings?.retention_days ?? null,
     privacyPolicyVersion: applicationSettings?.privacy_policy_version ?? "",
     notificationRecipients: safeJson<string[]>(

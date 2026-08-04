@@ -52,6 +52,11 @@ import {
 } from "@/lib/recruitment-policy";
 import type { ArticleBlock } from "@/lib/publications/types";
 import { utf8ByteLength } from "@/lib/text-limits";
+import {
+  effectiveApplicantRetentionDeadline,
+  effectiveApplicantRetentionSql,
+} from "@/lib/applicant-retention";
+import { recordMaintenanceSuccess } from "@/lib/maintenance-state";
 
 const INTEGRATION_JOB_TYPES = [
   "email",
@@ -147,7 +152,7 @@ export async function runMaintenance(limit = 5): Promise<JobRunSummary> {
   const secrets = env as unknown as RuntimeSecrets;
   const staleRecovered = await recoverStaleJobs(now);
   const scheduledPublished = await publishDueItems(now, boundedLimit);
-  const retentionQueued = await queueExpiredApplicantDeletions(
+  const retention = await queueExpiredApplicantDeletions(
     now,
     boundedLimit,
   );
@@ -167,10 +172,10 @@ export async function runMaintenance(limit = 5): Promise<JobRunSummary> {
     staleRecovered,
     processed: 0,
     succeeded: 0,
-    failed: 0,
+    failed: retention.failed,
     skipped: 0,
     awaitingConfiguration,
-    retentionQueued,
+    retentionQueued: retention.queued,
     rateLimitsPruned,
     analyticsRowsPruned,
   };
@@ -185,32 +190,89 @@ export async function runMaintenance(limit = 5): Promise<JobRunSummary> {
     if (result === "succeeded") summary.succeeded += 1;
     else summary.failed += 1;
   }
+  await recordMaintenanceSuccess();
   return summary;
 }
 
 async function queueExpiredApplicantDeletions(
   now: number,
   limit: number,
-): Promise<number> {
+): Promise<{ queued: number; failed: number }> {
   const due = await database()
     .prepare(
-      `SELECT id, cv_key, retention_expires_at
+      `SELECT id, cv_key, submitted_at, retention_expires_at
        FROM applicants
-       WHERE retention_expires_at IS NOT NULL
-         AND retention_expires_at <= ?
+       WHERE ${effectiveApplicantRetentionSql("applicants")} <= ?
          AND deletion_requested_at IS NULL
-       ORDER BY retention_expires_at ASC
+       ORDER BY ${effectiveApplicantRetentionSql("applicants")} ASC
        LIMIT ?`,
     )
     .bind(now, limit)
-    .all<{ id: string; cv_key: string; retention_expires_at: number }>();
+    .all<{
+      id: string;
+      cv_key: string;
+      submitted_at: number;
+      retention_expires_at: number | null;
+    }>();
 
   let queued = 0;
+  let failed = 0;
   for (const applicant of due.results) {
+    const effectiveRetentionExpiresAt = effectiveApplicantRetentionDeadline(
+      applicant.retention_expires_at,
+      applicant.submitted_at,
+    );
     if (!isApplicantCvKey(applicant.id, applicant.cv_key)) {
       console.error(
         "Applicant retention could not queue because the private object reference is invalid",
       );
+      const jobId = applicantDeletionJobId(applicant.id);
+      const db = database();
+      await db.batch([
+        db.prepare(
+          `UPDATE applicants
+           SET deletion_requested_at = ?, deletion_requested_by = NULL,
+               updated_at = ?
+           WHERE id = ? AND ${effectiveApplicantRetentionSql("applicants")} <= ?
+             AND deletion_requested_at IS NULL`,
+        ).bind(now, now, applicant.id, now),
+        db.prepare(
+          `INSERT INTO background_jobs
+           (id, type, status, payload, attempts, error, run_after, created_at, updated_at)
+           VALUES (?, 'applicant_delete', 'failed', ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET status = 'failed', error = excluded.error,
+             updated_at = excluded.updated_at`,
+        ).bind(
+          jobId,
+          JSON.stringify({
+            applicationId: applicant.id,
+            reason: "retention_expired",
+          }),
+          JOB_MAX_ATTEMPTS,
+          "Applicant deletion requires an administrator to repair its private file reference.",
+          now,
+          now,
+          now,
+        ),
+        db.prepare(
+          `INSERT INTO audit_log
+           (id, actor_id, action, entity_type, entity_id, metadata, created_at)
+           SELECT ?, NULL, 'applicant.retention_deletion_blocked',
+                  'applicant', ?, ?, ?
+           WHERE NOT EXISTS (
+             SELECT 1 FROM audit_log
+             WHERE action = 'applicant.retention_deletion_blocked'
+               AND entity_type = 'applicant' AND entity_id = ?
+           )`,
+        ).bind(
+          createId("audit"),
+          applicant.id,
+          JSON.stringify({ retentionExpiresAt: effectiveRetentionExpiresAt }),
+          now,
+          applicant.id,
+        ),
+      ]);
+      failed += 1;
       continue;
     }
     const jobId = applicantDeletionJobId(applicant.id);
@@ -226,7 +288,7 @@ async function queueExpiredApplicantDeletions(
           `UPDATE applicants
            SET deletion_requested_at = ?, deletion_requested_by = NULL,
                updated_at = ?
-           WHERE id = ? AND retention_expires_at <= ?
+           WHERE id = ? AND ${effectiveApplicantRetentionSql("applicants")} <= ?
              AND deletion_requested_at IS NULL`,
         )
         .bind(now, now, applicant.id, now),
@@ -251,7 +313,7 @@ async function queueExpiredApplicantDeletions(
         .bind(
           createId("audit"),
           JSON.stringify({
-            retentionExpiresAt: applicant.retention_expires_at,
+            retentionExpiresAt: effectiveRetentionExpiresAt,
           }),
           now,
           applicant.id,
@@ -260,7 +322,7 @@ async function queueExpiredApplicantDeletions(
     ]);
     if ((results[0].meta.changes ?? 0) === 1) queued += 1;
   }
-  return queued;
+  return { queued, failed };
 }
 
 async function pruneExpiredRateLimits(now: number): Promise<number> {
@@ -466,8 +528,7 @@ async function deleteApplicantData(job: JobRow, claimToken: string): Promise<voi
 
   const applicant = await database()
     .prepare(
-      `SELECT cv_key, submitted_at, privacy_policy_version,
-              retention_expires_at, deletion_requested_at,
+      `SELECT cv_key, submitted_at, retention_expires_at, deletion_requested_at,
               deletion_requested_by
        FROM applicants WHERE id = ? LIMIT 1`,
     )
@@ -475,28 +536,47 @@ async function deleteApplicantData(job: JobRow, claimToken: string): Promise<voi
     .first<{
       cv_key: string;
       submitted_at: number;
-      privacy_policy_version: string;
       retention_expires_at: number | null;
       deletion_requested_at: number | null;
       deletion_requested_by: string | null;
-    }>();
+  }>();
   if (!applicant) {
     await privateFiles().delete(key);
-    const completed = await database()
-      .prepare(
-        `UPDATE background_jobs
-         SET status = 'succeeded', payload = ?, error = NULL,
-             claim_token = NULL, updated_at = ?
-         WHERE id = ? AND status = 'running' AND claim_token = ?`,
-      )
-      .bind(
-        JSON.stringify({ applicantDeleted: true, reason: rawReason }),
-        Date.now(),
-        job.id,
-        claimToken,
-      )
-      .run();
-    if ((completed.meta.changes ?? 0) !== 1) {
+    const db = database();
+    const cleanup = await db.batch([
+      db
+        .prepare(
+          `DELETE FROM background_jobs
+           WHERE id <> ?
+             AND EXISTS (
+               SELECT 1 FROM background_jobs AS claimed_job
+               WHERE claimed_job.id = ? AND claimed_job.status = 'running'
+                 AND claimed_job.claim_token = ?
+             )
+             AND CASE WHEN json_valid(payload) THEN
+               json_extract(payload, '$.applicationId') = ? OR
+               json_extract(payload, '$.data.applicationId') = ?
+             ELSE 0 END`,
+        )
+        .bind(job.id, job.id, claimToken, applicantId, applicantId),
+      db
+        .prepare(
+          `DELETE FROM audit_log
+           WHERE entity_type = 'applicant' AND entity_id = ?
+             AND EXISTS (
+               SELECT 1 FROM background_jobs
+               WHERE id = ? AND status = 'running' AND claim_token = ?
+             )`,
+        )
+        .bind(applicantId, job.id, claimToken),
+      db
+        .prepare(
+          `DELETE FROM background_jobs
+           WHERE id = ? AND status = 'running' AND claim_token = ?`,
+        )
+        .bind(job.id, claimToken),
+    ]);
+    if ((cleanup.at(-1)?.meta.changes ?? 0) !== 1) {
       throw new JobClaimLostError("The applicant deletion lease was replaced.");
     }
     return;
@@ -508,7 +588,10 @@ async function deleteApplicantData(job: JobRow, claimToken: string): Promise<voi
   }
   if (
     rawReason === "retention_expired" &&
-    (!applicant.retention_expires_at || applicant.retention_expires_at > Date.now())
+    effectiveApplicantRetentionDeadline(
+      applicant.retention_expires_at,
+      applicant.submitted_at,
+    ) > Date.now()
   ) {
     throw new PermanentJobError(
       "The applicant has not reached the recorded retention date.",
@@ -528,11 +611,6 @@ async function deleteApplicantData(job: JobRow, claimToken: string): Promise<voi
   // and no CV becomes reachable while a deletion is pending.
   await assertActiveJobClaim(job.id, claimToken);
   await privateFiles().delete(key);
-  const now = Date.now();
-  const redactedPayload = JSON.stringify({
-    applicantDeleted: true,
-    reason: rawReason,
-  });
   const db = database();
   const results = await db.batch([
     db
@@ -571,29 +649,14 @@ async function deleteApplicantData(job: JobRow, claimToken: string): Promise<voi
       .bind(applicantId, job.id, claimToken),
     db
       .prepare(
-        `INSERT INTO audit_log
-         (id, actor_id, action, entity_type, entity_id, metadata, created_at)
-         SELECT ?, NULL, 'applicant.deleted', 'applicant', id, ?, ?
-         FROM applicants WHERE id = ? AND cv_key = ?
+        `DELETE FROM audit_log
+         WHERE entity_type = 'applicant' AND entity_id = ?
            AND EXISTS (
              SELECT 1 FROM background_jobs
              WHERE id = ? AND status = 'running' AND claim_token = ?
            )`,
       )
-      .bind(
-        createId("audit"),
-        JSON.stringify({
-          reason: rawReason,
-          submittedAt: applicant.submitted_at,
-          privacyPolicyVersion: applicant.privacy_policy_version,
-          retentionExpiresAt: applicant.retention_expires_at,
-        }),
-        now,
-        applicantId,
-        key,
-        job.id,
-        claimToken,
-      ),
+      .bind(applicantId, job.id, claimToken),
     db
       .prepare(
         `DELETE FROM applicants
@@ -606,12 +669,10 @@ async function deleteApplicantData(job: JobRow, claimToken: string): Promise<voi
       .bind(applicantId, key, job.id, claimToken),
     db
       .prepare(
-        `UPDATE background_jobs
-         SET status = 'succeeded', payload = ?, error = NULL,
-             claim_token = NULL, updated_at = ?
+        `DELETE FROM background_jobs
          WHERE id = ? AND status = 'running' AND claim_token = ?`,
       )
-      .bind(redactedPayload, now, job.id, claimToken),
+      .bind(job.id, claimToken),
   ]);
   if ((results.at(-1)?.meta.changes ?? 0) !== 1) {
     throw new JobClaimLostError("The applicant deletion lease was replaced.");

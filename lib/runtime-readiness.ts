@@ -13,6 +13,7 @@ import {
 
 export type ProductionReadinessEnv = MaintenanceMonitoringEnv & ParserProviderEnv & {
   REQUIRE_PRODUCTION_SERVICES?: string;
+  MAINTENANCE_SCHEDULER_ENABLED?: string;
   ANALYTICS_ENABLED?: string;
   NEXT_PUBLIC_SITE_URL?: string;
   INITIAL_SUPER_USER_EMAIL?: string;
@@ -44,6 +45,9 @@ export function missingProductionServiceConfiguration(
   }
   if (!analyticsEnabled(runtime.ANALYTICS_ENABLED)) {
     missing.push("first_party_analytics");
+  }
+  if (runtime.MAINTENANCE_SCHEDULER_ENABLED?.trim().toLowerCase() !== "true") {
+    missing.push("maintenance_scheduler");
   }
 
   const email = resolveEmailProvider(runtime);

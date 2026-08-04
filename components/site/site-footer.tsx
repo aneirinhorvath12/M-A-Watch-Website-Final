@@ -95,6 +95,7 @@ export function SiteFooter({
             <h2>Policies</h2>
             <ul>
               <li><Link href="/privacy">Privacy</Link></li>
+              <li><Link href="/retention">Data retention</Link></li>
               <li><Link href="/terms">Terms &amp; disclaimer</Link></li>
               <li><Link href="/accessibility">Accessibility</Link></li>
             </ul>

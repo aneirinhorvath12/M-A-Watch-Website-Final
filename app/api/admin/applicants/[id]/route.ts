@@ -10,12 +10,14 @@ import {
   isApplicantCvKey,
   isApplicantDeletionReason,
 } from "@/lib/recruitment-policy";
+import { effectiveApplicantRetentionDeadline } from "@/lib/applicant-retention";
 
 export const dynamic = "force-dynamic";
 
 type ApplicantDeletionRow = {
   id: string;
   cv_key: string;
+  submitted_at: number;
   retention_expires_at: number | null;
   deletion_requested_at: number | null;
 };
@@ -42,7 +44,7 @@ export async function DELETE(
   await ensureDatabase();
   const applicant = await database()
     .prepare(
-      `SELECT id, cv_key, retention_expires_at,
+      `SELECT id, cv_key, submitted_at, retention_expires_at,
               deletion_requested_at
        FROM applicants WHERE id = ? LIMIT 1`,
     )
@@ -54,7 +56,10 @@ export async function DELETE(
   }
   if (
     payload.reason === "retention_expired" &&
-    (!applicant.retention_expires_at || applicant.retention_expires_at > Date.now())
+    effectiveApplicantRetentionDeadline(
+      applicant.retention_expires_at,
+      applicant.submitted_at,
+    ) > Date.now()
   ) {
     return apiError("This applicant has not reached the recorded retention date.", 409);
   }

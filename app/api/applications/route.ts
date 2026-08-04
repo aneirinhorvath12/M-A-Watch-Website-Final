@@ -20,7 +20,7 @@ import {
   applicantRetentionDeadline,
   isApplicantCvKey,
 } from "@/lib/recruitment-policy";
-import { currentRecruitmentReadiness } from "@/lib/recruitment-runtime";
+import { currentRecruitmentIntakeReadiness } from "@/lib/recruitment-runtime";
 import { getPublishedSiteContact } from "@/lib/public-content";
 
 const DIVISIONS = new Set(["law", "finance", "markets"]);
@@ -321,7 +321,7 @@ async function applicationIntakeGate(
   }
 
   const recipients = safeJson<string[]>(settings.notification_recipients, []);
-  const readiness = currentRecruitmentReadiness({
+  const readiness = await currentRecruitmentIntakeReadiness({
     retentionDays: settings.retention_days,
     privacyPolicyVersion: settings.privacy_policy_version,
     notificationRecipients: recipients,

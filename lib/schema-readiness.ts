@@ -12,6 +12,7 @@ const REQUIRED_TABLES = new Set([
   "audit_log",
   "background_jobs",
   "analytics_daily",
+  "maintenance_state",
 ]);
 
 export type SchemaDefinition = { name: string; sql: string | null };
@@ -40,6 +41,9 @@ export function hasExpectedSchema(definitions: readonly SchemaDefinition[]): boo
   const hasFencedJobClaims = /\bclaim_token\b/i.test(
     rows.get("background_jobs") ?? "",
   );
+  const hasMaintenanceHeartbeat = /\blast_completed_at\b/i.test(
+    rows.get("maintenance_state") ?? "",
+  );
   return (
     hasRequiredTables &&
     hasSubmissionIdempotency &&
@@ -47,6 +51,7 @@ export function hasExpectedSchema(definitions: readonly SchemaDefinition[]): boo
     applicationsDefaultClosed &&
     hasRetentionPolicy &&
     hasAggregateAnalytics &&
-    hasFencedJobClaims
+    hasFencedJobClaims &&
+    hasMaintenanceHeartbeat
   );
 }

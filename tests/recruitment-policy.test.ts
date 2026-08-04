@@ -12,18 +12,23 @@ import {
   type RecruitmentRuntimeConfig,
   type RecruitmentSettings,
 } from "../lib/recruitment-policy";
+import {
+  APPLICANT_RETENTION_DAYS,
+  CURRENT_APPLICATION_PRIVACY_VERSION,
+} from "../lib/data-policy";
 
 const settings: RecruitmentSettings = {
-  retentionDays: 180,
-  privacyPolicyVersion: "approved-2026-08",
+  retentionDays: APPLICANT_RETENTION_DAYS,
+  privacyPolicyVersion: CURRENT_APPLICATION_PRIVACY_VERSION,
   notificationRecipients: ["recruitment@mawatch.org"],
 };
 
 const genericRuntime: RecruitmentRuntimeConfig = {
   NEXT_PUBLIC_SITE_URL: "https://ma-watch.example",
   APPLICATION_INTAKE_ENABLED: "true",
-  APPROVED_APPLICANT_RETENTION_DAYS: "180",
-  APPROVED_APPLICATION_PRIVACY_VERSION: "approved-2026-08",
+  MAINTENANCE_SCHEDULER_ENABLED: "true",
+  APPROVED_APPLICANT_RETENTION_DAYS: String(APPLICANT_RETENTION_DAYS),
+  APPROVED_APPLICATION_PRIVACY_VERSION: CURRENT_APPLICATION_PRIVACY_VERSION,
   EMAIL_WEBHOOK_URL: "https://email.example.test/send",
   EMAIL_WEBHOOK_TOKEN: "email-secret",
   MALWARE_SCAN_WEBHOOK_URL: "https://scanner.example.test/scan",
@@ -44,6 +49,7 @@ test("application intake is ready only when policy and secure providers match", 
     "intakeDisabled",
     "malwareScan",
     "privacyPolicy",
+    "retentionAutomation",
     "retentionPolicy",
     "siteUrl",
   ].sort());
@@ -57,8 +63,9 @@ test("direct Resend and Cloudmersive providers satisfy the intake gate", () => {
   const runtime: RecruitmentRuntimeConfig = {
     NEXT_PUBLIC_SITE_URL: "https://ma-watch.example",
     APPLICATION_INTAKE_ENABLED: "true",
-    APPROVED_APPLICANT_RETENTION_DAYS: "180",
-    APPROVED_APPLICATION_PRIVACY_VERSION: "approved-2026-08",
+    MAINTENANCE_SCHEDULER_ENABLED: "true",
+    APPROVED_APPLICANT_RETENTION_DAYS: String(APPLICANT_RETENTION_DAYS),
+    APPROVED_APPLICATION_PRIVACY_VERSION: CURRENT_APPLICATION_PRIVACY_VERSION,
     RESEND_API_KEY: "resend-secret",
     EMAIL_FROM: "M&A Watch <applications@mawatch.org>",
     CLOUDMERSIVE_API_KEY: "cloudmersive-secret",
@@ -125,6 +132,33 @@ test("retention calculations accept bounded whole days", () => {
   assert.equal(parseApplicantRetentionDays("3651"), null);
   assert.equal(applicantRetentionDeadline(1_000, 2), 172_801_000);
   assert.throws(() => applicantRetentionDeadline(1_000, 0));
+});
+
+test("intake cannot drift from the published privacy and retention policy", () => {
+  assert.equal(
+    recruitmentReadiness(genericRuntime, {
+      ...settings,
+      retentionDays: APPLICANT_RETENTION_DAYS - 1,
+    }).issues.includes("retentionPolicy"),
+    true,
+  );
+  assert.equal(
+    recruitmentReadiness(genericRuntime, {
+      ...settings,
+      privacyPolicyVersion: "superseded-policy",
+    }).issues.includes("privacyPolicy"),
+    true,
+  );
+});
+
+test("intake remains closed until automatic retention scheduling is approved", () => {
+  const readiness = recruitmentReadiness(
+    { ...genericRuntime, MAINTENANCE_SCHEDULER_ENABLED: "false" },
+    settings,
+  );
+
+  assert.equal(readiness.ready, false);
+  assert.equal(readiness.issues.includes("retentionAutomation"), true);
 });
 
 test("applicant deletion helpers constrain reasons and private object keys", () => {

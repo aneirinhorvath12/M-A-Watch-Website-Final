@@ -38,6 +38,15 @@ Cron expressions run in UTC and trigger changes can take up to 15 minutes to
 propagate. Keep the protected HTTP hook below as an independent fallback rather
 than configuring both paths to run routinely.
 
+The checked-in GitHub Actions workflow at
+`.github/workflows/maintenance.yml` is the deployable fallback when the hosting
+platform trigger is unavailable. Add repository secrets `MAINTENANCE_ENDPOINT`
+(the full deployed HTTPS URL ending in `/api/maintenance`) and
+`MAINTENANCE_TOKEN`, then run the workflow manually and confirm a successful
+heartbeat before relying on its five-minute schedule. GitHub may delay scheduled
+runs during high load and can disable schedules on inactive public repositories,
+so missing-run monitoring remains required.
+
 Where a platform trigger is unavailable, call:
 
 ```text
@@ -55,6 +64,26 @@ exponential backoff, and stops retrying ordinary failures after five attempts.
 Failed and waiting jobs are retained in D1 and surfaced in the admin dashboard.
 The same maintenance cycle removes aggregate analytics rows older than 400 days
 and expired public rate-limit buckets.
+
+Set the hosted `MAINTENANCE_SCHEDULER_ENABLED=true` only after either the Worker
+Cron or GitHub Actions schedule has been enabled, exercised and connected to
+monitoring. With production-service enforcement enabled, `/api/health` fails
+closed when this assertion is absent. This flag is an operational approval
+signal, not proof that the scheduler is running. Each completed maintenance run
+also records a coarse, non-personal timestamp in D1. Application intake fails
+closed if that timestamp is missing or more than 20 minutes old; the external
+heartbeat remains responsible for alerting operators to missing runs.
+
+Applicant retention is fixed at 180 days from submission in the public policy.
+Submission assigns each applicant an immutable deadline. Every maintenance run
+queues due records for deletion and prioritises those jobs ahead of provider
+work. Deletion removes the private CV first, then the applicant row, notes,
+status history, applicant-linked audit rows and related background jobs. The
+claimed deletion job is removed rather than retained as a succeeded record.
+Operational monitoring keeps only aggregate maintenance counts without an
+applicant identifier. Changing the duration requires a coordinated policy, code and hosted
+approval change; the admin route rejects a period that differs from the
+published policy.
 
 ## First-party aggregate analytics
 

@@ -3,7 +3,11 @@ import { apiError, authorizeAdminRequest, readJsonObject, splitList, stringValue
 import { writeAudit } from "@/lib/audit";
 import { database, normaliseEmail, safeJson } from "@/lib/platform";
 import { parseApplicantRetentionDays } from "@/lib/recruitment-policy";
-import { currentRecruitmentReadiness } from "@/lib/recruitment-runtime";
+import { currentRecruitmentIntakeReadiness } from "@/lib/recruitment-runtime";
+import {
+  APPLICANT_RETENTION_DAYS,
+  CURRENT_APPLICATION_PRIVACY_VERSION,
+} from "@/lib/data-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +23,7 @@ export async function GET(request: Request) {
         retention_days?: number | null;
       }
     | null;
-  const readiness = currentRecruitmentReadiness({
+  const readiness = await currentRecruitmentIntakeReadiness({
     retentionDays: row?.retention_days ?? null,
     privacyPolicyVersion: row?.privacy_policy_version ?? "",
     notificationRecipients: safeJson<string[]>(
@@ -60,6 +64,12 @@ export async function PATCH(request: Request) {
   if (!introduction) return apiError("Add introductory application copy.", 422);
   if (!closedMessage) return apiError("Add a message for closed applications.", 422);
   if (!privacyPolicyVersion) return apiError("Add the current privacy policy version.", 422);
+  if (privacyPolicyVersion !== CURRENT_APPLICATION_PRIVACY_VERSION) {
+    return apiError(
+      `The published privacy notice is version ${CURRENT_APPLICATION_PRIVACY_VERSION}. Update the notice and application together before selecting another version.`,
+      422,
+    );
+  }
   if (
     rawRetentionDays !== undefined &&
     String(rawRetentionDays).trim() &&
@@ -67,7 +77,16 @@ export async function PATCH(request: Request) {
   ) {
     return apiError("Applicant retention must be a whole number from 1 to 3650 days.", 422);
   }
-  const readiness = currentRecruitmentReadiness({
+  if (
+    retentionDays !== null &&
+    retentionDays !== APPLICANT_RETENTION_DAYS
+  ) {
+    return apiError(
+      `The published retention policy is ${APPLICANT_RETENTION_DAYS} days. Update the policy and application together before selecting another period.`,
+      422,
+    );
+  }
+  const readiness = await currentRecruitmentIntakeReadiness({
     retentionDays,
     privacyPolicyVersion,
     notificationRecipients: rawRecipients,

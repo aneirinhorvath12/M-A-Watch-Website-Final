@@ -162,6 +162,10 @@ function mockD1(store) {
     sql: "CREATE TABLE analytics_daily (day TEXT, event TEXT, dimension_name TEXT, dimension_value TEXT, count INTEGER, PRIMARY KEY (day, event, dimension_name, dimension_value))",
   });
   schema.push({
+    name: "maintenance_state",
+    sql: "CREATE TABLE maintenance_state (id INTEGER PRIMARY KEY, last_completed_at INTEGER, updated_at INTEGER)",
+  });
+  schema.push({
     name: "applicants",
     sql: "CREATE TABLE applicants (id TEXT, submission_key TEXT, retention_expires_at INTEGER, deletion_requested_at INTEGER)",
   });
@@ -332,6 +336,21 @@ test("D1-backed public pages render fresh published content on the next request"
     assert.doesNotMatch(infoHtml, /<script>not executable<\/script>/);
     assert.match(infoHtml, /alt="M&amp;A Watch branded preview"/);
     assert.match(infoHtml, /Managed call to action/);
+
+    const privacy = await worker.fetch(new Request("http://localhost/privacy"), runtimeEnv, context);
+    assert.equal(privacy.status, 200);
+    const privacyHtml = await privacy.text();
+    assert.match(privacyHtml, /180(?:<!-- -->)? days from submission/i);
+    assert.match(privacyHtml, /version 2026-08-05/i);
+    assert.match(privacyHtml, /editorial@mawatch\.org/i);
+    assert.doesNotMatch(privacyHtml, /will be confirmed before public launch/i);
+
+    const retention = await worker.fetch(new Request("http://localhost/retention"), runtimeEnv, context);
+    assert.equal(retention.status, 200);
+    const retentionHtml = await retention.text();
+    assert.match(retentionHtml, /Recruitment data retention policy/i);
+    assert.match(retentionHtml, /scheduled maintenance process/i);
+    assert.match(retentionHtml, /private CV first/i);
   } finally {
     delete globalThis.__testCloudflareEnv;
   }
@@ -409,7 +428,20 @@ function securityD1({
   analyticsAttempts = 1,
   publicationMutationChanges = 1,
   modelPublicationParserFailure = false,
+  maintenanceLastCompletedAt = Date.now(),
 } = {}) {
+  const applicantVisibleAt = (applicant, cutoff) => {
+    const submittedAt = applicant.submitted_at ?? Date.now();
+    const deadline = applicant.retention_expires_at ?? submittedAt + 180 * 24 * 60 * 60 * 1000;
+    return deadline > cutoff;
+  };
+  const applicantForRetentionQuery = (sql, bindings) => {
+    const applicant = applicants.find((candidate) => bindings.includes(candidate.id));
+    if (!applicant) return null;
+    if (!sql.includes("COALESCE(")) return applicant;
+    const cutoff = Number(bindings.at(-1));
+    return applicantVisibleAt(applicant, cutoff) ? applicant : null;
+  };
   const calls = [];
   const auditActions = [];
   const schema = [
@@ -434,6 +466,10 @@ function securityD1({
     sql: "CREATE TABLE analytics_daily (day TEXT, event TEXT, dimension_name TEXT, dimension_value TEXT, count INTEGER, PRIMARY KEY (day, event, dimension_name, dimension_value))",
   });
   schema.push({
+    name: "maintenance_state",
+    sql: "CREATE TABLE maintenance_state (id INTEGER PRIMARY KEY, last_completed_at INTEGER, updated_at INTEGER)",
+  });
+  schema.push({
     name: "applicants",
     sql: "CREATE TABLE applicants (id TEXT, submission_key TEXT, retention_expires_at INTEGER, deletion_requested_at INTEGER)",
   });
@@ -451,13 +487,22 @@ function securityD1({
           (admin) => admin.external_user_id === bindings[0] || admin.email === bindings[1],
         ) ?? null;
       }
-      if (sql.includes("FROM applicants WHERE id = ?")) {
-        return applicants.find((applicant) => applicant.id === bindings[0]) ?? null;
+      if (
+        sql.includes("FROM applicants WHERE id = ?") ||
+        sql.includes("FROM applicants a") && sql.includes("a.id = ?")
+      ) {
+        return applicantForRetentionQuery(sql, bindings);
       }
       if (sql.includes("FROM application_settings WHERE id = 1")) {
         return typeof applicationSettings === "function"
           ? applicationSettings()
           : applicationSettings;
+      }
+      if (sql.includes("FROM maintenance_state WHERE id = 1")) {
+        return { last_completed_at: maintenanceLastCompletedAt };
+      }
+      if (sql.includes("SELECT 1 AS present FROM background_jobs") && sql.includes("claim_token = ?")) {
+        return { present: 1 };
       }
       if (sql.includes("FROM background_jobs") && sql.includes("'$.applicationId'")) {
         return jobs.find((job) => job.applicationId === bindings[0]) ?? null;
@@ -515,6 +560,29 @@ function securityD1({
       if (sql.includes("SELECT key, draft_value FROM content_entries")) {
         return { results: contentEntries };
       }
+      if (sql.includes("SELECT key, draft_value, published_at FROM content_entries")) {
+        return { results: contentEntries };
+      }
+      if (sql.includes("SELECT id, cv_key, submitted_at, retention_expires_at") && sql.includes("FROM applicants")) {
+        const cutoff = Number(bindings[0]);
+        const limit = Number(bindings[1]);
+        return {
+          results: applicants
+            .filter((applicant) =>
+              applicant.deletion_requested_at == null &&
+              !applicantVisibleAt(applicant, cutoff),
+            )
+            .slice(0, limit),
+        };
+      }
+      if (sql.includes("FROM applicants a")) {
+        const cutoff = Number(bindings[0]);
+        return {
+          results: applicants
+            .filter((applicant) => !sql.includes("COALESCE(") || applicantVisibleAt(applicant, cutoff))
+            .map((applicant) => ({ ...applicant, duplicate_count: 1 })),
+        };
+      }
       return { results: [] };
     },
     run: async () => {
@@ -543,6 +611,25 @@ function securityD1({
           sql.includes("FROM publications"))
       ) {
         return { meta: { changes: publicationMutationChanges } };
+      }
+      if (
+        sql.includes("COALESCE(") &&
+        (sql.includes("INSERT INTO applicant_notes") ||
+          sql.includes("UPDATE applicants SET status = ?"))
+      ) {
+        return {
+          meta: {
+            changes: applicantForRetentionQuery(sql, bindings) ? 1 : 0,
+          },
+        };
+      }
+      if (sql.includes("UPDATE applicants") && sql.includes("SET deletion_requested_at = ?")) {
+        const applicant = applicants.find((candidate) => candidate.id === bindings[2]);
+        if (!applicant || applicant.deletion_requested_at != null) {
+          return { meta: { changes: 0 } };
+        }
+        applicant.deletion_requested_at = bindings[0];
+        return { meta: { changes: 1 } };
       }
       return { meta: { changes: 1 } };
     },
@@ -744,14 +831,15 @@ test("application CV uploads reject oversized streams with missing or false Cont
   const settings = {
     open: 1,
     notification_recipients: JSON.stringify(["applications@mawatch.test"]),
-    privacy_policy_version: "approved-2026-08",
+    privacy_policy_version: "2026-08-05",
     retention_days: 180,
   };
   const runtime = {
     NEXT_PUBLIC_SITE_URL: "https://mawatch.test",
     APPLICATION_INTAKE_ENABLED: "true",
+    MAINTENANCE_SCHEDULER_ENABLED: "true",
     APPROVED_APPLICANT_RETENTION_DAYS: "180",
-    APPROVED_APPLICATION_PRIVACY_VERSION: "approved-2026-08",
+    APPROVED_APPLICATION_PRIVACY_VERSION: "2026-08-05",
     EMAIL_WEBHOOK_URL: "https://email.mawatch.test/send",
     EMAIL_WEBHOOK_TOKEN: "email-secret",
     MALWARE_SCAN_WEBHOOK_URL: "https://scanner.mawatch.test/scan",
@@ -786,7 +874,7 @@ test("closing applications after a CV is staged wins and removes the private obj
   const openSettings = {
     open: 1,
     notification_recipients: JSON.stringify(["applications@mawatch.test"]),
-    privacy_policy_version: "approved-2026-08",
+    privacy_policy_version: "2026-08-05",
     retention_days: 180,
   };
   let settingsReads = 0;
@@ -819,8 +907,9 @@ test("closing applications after a CV is staged wins and removes the private obj
     runtime: {
       NEXT_PUBLIC_SITE_URL: "https://mawatch.test",
       APPLICATION_INTAKE_ENABLED: "true",
+      MAINTENANCE_SCHEDULER_ENABLED: "true",
       APPROVED_APPLICANT_RETENTION_DAYS: "180",
-      APPROVED_APPLICATION_PRIVACY_VERSION: "approved-2026-08",
+      APPROVED_APPLICATION_PRIVACY_VERSION: "2026-08-05",
       EMAIL_WEBHOOK_URL: "https://email.mawatch.test/send",
       EMAIL_WEBHOOK_TOKEN: "email-secret",
       MALWARE_SCAN_WEBHOOK_URL: "https://scanner.mawatch.test/scan",
@@ -1194,6 +1283,48 @@ test("aggregate analytics reporting is Admin-only and appears in regular Admin n
   assert.match(html, /Cookie-free, first-party daily counters/i);
 });
 
+test("page content administration opens as a focused area navigator", async () => {
+  const admin = adminRow();
+  const d1 = securityD1({
+    admins: [admin],
+    contentEntries: [
+      { key: "homepage.hero", draft_value: "{}", published_at: Date.now() },
+      { key: "homepage.overview", draft_value: "{}", published_at: Date.now() },
+      { key: "homepage.editorial", draft_value: "{}", published_at: null },
+      { key: "info.page", draft_value: "{}", published_at: null },
+      { key: "site.contact", draft_value: "{}", published_at: Date.now() },
+    ],
+  });
+
+  const landing = await fetchSecurityRoute("/admin/content", {
+    d1,
+    identity: admin,
+    headers: { accept: "text/html" },
+  });
+  assert.equal(landing.status, 200);
+  const landingHtml = await landing.text();
+  assert.match(landingHtml, /Choose an area to edit/i);
+  assert.match(landingHtml, /href="\/admin\/content\?section=homepage-hero"/i);
+  assert.match(landingHtml, /Homepage areas/i);
+  assert.match(landingHtml, /Other website content areas/i);
+  assert.match(landingHtml, /Published version exists; saved draft may differ/i);
+  assert.match(landingHtml, /No published version yet/i);
+  assert.doesNotMatch(landingHtml, /Publish saved draft/i);
+
+  const info = await fetchSecurityRoute("/admin/content?section=info", {
+    d1,
+    identity: admin,
+    headers: { accept: "text/html" },
+  });
+  assert.equal(info.status, 200);
+  const infoHtml = await info.text();
+  assert.match(infoHtml, /Switch content area/i);
+  assert.match(infoHtml, /All page content/i);
+  assert.match(infoHtml, /Publish saved draft/i);
+  assert.match(infoHtml, /No published version/i);
+  assert.doesNotMatch(infoHtml, /Homepage hero/i);
+});
+
 test("direct admin APIs deny anonymous, non-member, under-privileged and cross-origin requests", async () => {
   const noMemberD1 = securityD1();
   const anonymous = await fetchSecurityRoute("/api/admin/users", { d1: noMemberD1 });
@@ -1385,6 +1516,274 @@ test("private applicant CV routes require membership and release only clean, cor
   assert.equal(clean.headers.get("content-security-policy"), "default-src 'none'; sandbox");
   assert.equal(clean.headers.get("cross-origin-resource-policy"), "same-origin");
   assert.equal(await clean.text(), "%PDF-1.7 clean applicant CV");
+});
+
+test("expired applicants are synchronously hidden from every administrative surface", async () => {
+  const admin = adminRow();
+  const cvKey = `private/applicants/${TEST_APPLICANT_ID}/expired.pdf`;
+  const expiredApplicant = {
+    id: TEST_APPLICANT_ID,
+    name: "Expired Applicant",
+    university: "Old University",
+    email: "expired@example.test",
+    division: "law",
+    status: "new",
+    cv_key: cvKey,
+    cv_filename: "expired.pdf",
+    cv_size: 100,
+    privacy_acknowledged_at: Date.now() - 1_000_000,
+    privacy_policy_version: "2026-08-05",
+    submitted_at: Date.now() - 181 * 24 * 60 * 60 * 1000,
+    retention_expires_at: null,
+    deletion_requested_at: null,
+    updated_at: Date.now() - 1_000_000,
+  };
+  const d1 = securityD1({ admins: [admin], applicants: [expiredApplicant] });
+  const r2 = securityR2({ [cvKey]: storedObject("%PDF-1.7 expired private CV") });
+
+  const list = await fetchSecurityRoute("/admin/applicants", {
+    d1,
+    identity: admin,
+    headers: { accept: "text/html" },
+  });
+  assert.equal(list.status, 200);
+  const listHtml = await list.text();
+  assert.doesNotMatch(listHtml, /Expired Applicant|expired@example\.test/);
+
+  const detail = await fetchSecurityRoute(`/admin/applicants/${TEST_APPLICANT_ID}`, {
+    d1,
+    identity: admin,
+    headers: { accept: "text/html" },
+  });
+  assert.equal(detail.status, 404);
+
+  const exported = await fetchSecurityRoute("/api/admin/applicants/export", {
+    d1,
+    identity: admin,
+  });
+  assert.equal(exported.status, 200);
+  assert.doesNotMatch(await exported.text(), /Expired Applicant|expired@example\.test/);
+
+  const cv = await fetchSecurityRoute(`/api/files/applicants/${TEST_APPLICANT_ID}/cv`, {
+    d1,
+    r2,
+    identity: admin,
+  });
+  assert.equal(cv.status, 404);
+  assert.deepEqual(r2.heads, []);
+  assert.deepEqual(r2.gets, []);
+
+  const mutationHeaders = {
+    "content-type": "application/json",
+    origin: "https://mawatch.test",
+    "sec-fetch-site": "same-origin",
+  };
+  const note = await fetchSecurityRoute(`/api/admin/applicants/${TEST_APPLICANT_ID}/notes`, {
+    d1,
+    identity: admin,
+    method: "POST",
+    headers: mutationHeaders,
+    body: JSON.stringify({ body: "Should not persist" }),
+  });
+  assert.equal(note.status, 404);
+
+  const status = await fetchSecurityRoute(`/api/admin/applicants/${TEST_APPLICANT_ID}/status`, {
+    d1,
+    identity: admin,
+    method: "PATCH",
+    headers: mutationHeaders,
+    body: JSON.stringify({ status: "reviewing" }),
+  });
+  assert.equal(status.status, 404);
+  assert.equal(
+    d1.calls.some((call) => call.sql.includes("INSERT INTO applicant_notes")),
+    false,
+  );
+  assert.equal(
+    d1.calls.some((call) => call.sql.includes("UPDATE applicants SET status = ?")),
+    false,
+  );
+});
+
+test("application intake closes when the persisted maintenance heartbeat is stale", async () => {
+  const settings = {
+    open: 1,
+    introduction: "Apply now",
+    closed_message: "Closed",
+    notification_recipients: JSON.stringify(["applications@mawatch.test"]),
+    privacy_policy_version: "2026-08-05",
+    retention_days: 180,
+  };
+  const runtime = {
+    NEXT_PUBLIC_SITE_URL: "https://mawatch.test",
+    APPLICATION_INTAKE_ENABLED: "true",
+    MAINTENANCE_SCHEDULER_ENABLED: "true",
+    APPROVED_APPLICANT_RETENTION_DAYS: "180",
+    APPROVED_APPLICATION_PRIVACY_VERSION: "2026-08-05",
+    EMAIL_WEBHOOK_URL: "https://email.mawatch.test/send",
+    EMAIL_WEBHOOK_TOKEN: "email-secret",
+    MALWARE_SCAN_WEBHOOK_URL: "https://scanner.mawatch.test/scan",
+    MALWARE_SCAN_WEBHOOK_TOKEN: "scanner-secret",
+  };
+  const d1 = securityD1({
+    applicationSettings: settings,
+    maintenanceLastCompletedAt: Date.now() - 21 * 60 * 1000,
+  });
+  const status = await fetchSecurityRoute("/api/applications/status", {
+    d1,
+    runtime,
+  });
+  assert.equal(status.status, 200);
+  assert.equal((await status.json()).open, false);
+
+  const submission = await fetchSecurityRoute("/api/applications", {
+    d1,
+    method: "POST",
+    runtime,
+    headers: {
+      origin: "https://mawatch.test",
+      "sec-fetch-site": "same-origin",
+    },
+    body: new FormData(),
+  });
+  assert.equal(submission.status, 503);
+  assert.equal(
+    d1.calls.some((call) => call.sql.includes("INSERT INTO applicants")),
+    false,
+  );
+});
+
+test("maintenance handles legacy expiry and an invalid oldest CV key without starving later deletion", async () => {
+  const submittedAt = Date.now() - 181 * 24 * 60 * 60 * 1000;
+  const invalidId = "application_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const validId = "application_bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const applicants = [
+    {
+      id: invalidId,
+      cv_key: "private/applicants/someone-else/unsafe.pdf",
+      submitted_at: submittedAt,
+      retention_expires_at: null,
+      deletion_requested_at: null,
+    },
+    {
+      id: validId,
+      cv_key: `private/applicants/${validId}/cv.pdf`,
+      submitted_at: submittedAt + 1,
+      retention_expires_at: null,
+      deletion_requested_at: null,
+    },
+  ];
+  const d1 = securityD1({ applicants });
+  const r2 = securityR2();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(null, { status: 204 });
+  try {
+    const response = await fetchSecurityRoute("/api/maintenance", {
+      d1,
+      r2,
+      method: "POST",
+      headers: { authorization: "Bearer maintenance-secret" },
+      runtime: {
+        MAINTENANCE_TOKEN: "maintenance-secret",
+        MAINTENANCE_HEARTBEAT_URL: "https://heartbeat.example/check-in",
+        MAINTENANCE_ALERT_WEBHOOK_URL: "https://alerts.example/maintenance",
+        MAINTENANCE_ALERT_WEBHOOK_TOKEN: "alert-secret",
+      },
+    });
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.summary.retentionQueued, 1);
+    assert.equal(result.summary.failed, 1);
+    assert.ok(applicants.every((applicant) => applicant.deletion_requested_at != null));
+    assert.equal(
+      d1.calls.some((call) =>
+        call.sql.includes("'applicant_delete', 'failed'") &&
+        call.bindings.some((binding) => String(binding).includes(invalidId)),
+      ),
+      true,
+    );
+    assert.equal(
+      d1.calls.some((call) =>
+        call.sql.includes("'applicant_delete', 'queued'") &&
+        call.bindings.some((binding) => String(binding).includes(validId)),
+      ),
+      true,
+    );
+    assert.deepEqual(r2.deletes, [], "an unsafe object reference must never be deleted");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("successful applicant deletion removes audit and job linkage", async () => {
+  const applicantId = "application_cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const key = `private/applicants/${applicantId}/cv.pdf`;
+  const jobId = `job_delete_${applicantId}`;
+  const applicant = {
+    id: applicantId,
+    cv_key: key,
+    submitted_at: Date.now() - 181 * 24 * 60 * 60 * 1000,
+    retention_expires_at: Date.now() - 60_000,
+    deletion_requested_at: Date.now() - 30_000,
+    deletion_requested_by: null,
+  };
+  const d1 = securityD1({
+    applicants: [applicant],
+    queuedJobs: [{
+      id: jobId,
+      type: "applicant_delete",
+      payload: JSON.stringify({
+        applicationId: applicantId,
+        key,
+        reason: "retention_expired",
+      }),
+      attempts: 0,
+    }],
+  });
+  const r2 = securityR2({ [key]: storedObject("%PDF-1.7 expired") });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(null, { status: 204 });
+  try {
+    const response = await fetchSecurityRoute("/api/maintenance", {
+      d1,
+      r2,
+      method: "POST",
+      headers: { authorization: "Bearer maintenance-secret" },
+      runtime: {
+        MAINTENANCE_TOKEN: "maintenance-secret",
+        MAINTENANCE_HEARTBEAT_URL: "https://heartbeat.example/check-in",
+      },
+    });
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.summary.succeeded, 1);
+    assert.deepEqual(r2.deletes, [key]);
+    assert.equal(
+      d1.calls.some((call) =>
+        call.sql.includes("DELETE FROM audit_log") &&
+        call.sql.includes("entity_type = 'applicant'") &&
+        call.bindings.includes(applicantId),
+      ),
+      true,
+    );
+    assert.equal(
+      d1.calls.some((call) =>
+        call.sql.includes("DELETE FROM background_jobs") &&
+        call.sql.includes("WHERE id = ? AND status = 'running'") &&
+        call.bindings.includes(jobId),
+      ),
+      true,
+    );
+    assert.equal(
+      d1.calls.some((call) =>
+        call.sql.includes("'applicant.deleted'") ||
+        call.sql.includes("SET status = 'succeeded'") && call.bindings.includes(jobId),
+      ),
+      false,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("publication file routes keep sources private and expose only clean published derivatives", async () => {

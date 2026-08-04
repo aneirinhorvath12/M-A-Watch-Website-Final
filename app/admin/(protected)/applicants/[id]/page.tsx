@@ -7,6 +7,10 @@ import { APPLICANT_STATUSES, formatAdminDate, getApplicantAdmin, titleCaseStatus
 import { writeAudit } from "@/lib/audit";
 import { database, privateFiles } from "@/lib/platform";
 import { applicantDeletionJobId } from "@/lib/recruitment-policy";
+import {
+  activeApplicantRetentionSql,
+  applicantRetentionRequestTime,
+} from "@/lib/applicant-retention";
 
 export const dynamic = "force-dynamic";
 
@@ -21,21 +25,26 @@ function fileSize(value: number): string {
 export default async function ApplicantDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const actor = await requireAdmin("/admin/applicants");
   const { id } = await params;
-  const applicant = await getApplicantAdmin(id);
+  const accessTime = applicantRetentionRequestTime();
+  const applicant = await getApplicantAdmin(id, accessTime);
   if (!applicant) notFound();
-  const cvRow = await database().prepare("SELECT cv_key FROM applicants WHERE id = ?").bind(id).first<{ cv_key: string }>();
+  const cvRow = await database().prepare(`SELECT cv_key FROM applicants a WHERE id = ? AND ${activeApplicantRetentionSql("a")}`).bind(id, accessTime).first<{ cv_key: string }>();
   const [notes, history, cvObject, scanJob, deletionJob] = await Promise.all([
     database().prepare(
       `SELECT notes.id, notes.body, notes.created_at, users.name AS actor_name, users.status AS actor_status
        FROM applicant_notes notes LEFT JOIN admin_users users ON users.id = notes.created_by
-       WHERE notes.applicant_id = ? ORDER BY notes.created_at DESC`,
-    ).bind(id).all<NoteRow>(),
+       WHERE notes.applicant_id = ?
+         AND EXISTS (SELECT 1 FROM applicants a WHERE a.id = notes.applicant_id AND ${activeApplicantRetentionSql("a")})
+       ORDER BY notes.created_at DESC`,
+    ).bind(id, accessTime).all<NoteRow>(),
     database().prepare(
       `SELECT history.id, history.from_status, history.to_status, history.changed_at,
               users.name AS actor_name, users.status AS actor_status
        FROM applicant_status_history history LEFT JOIN admin_users users ON users.id = history.changed_by
-       WHERE history.applicant_id = ? ORDER BY history.changed_at DESC`,
-    ).bind(id).all<HistoryRow>(),
+       WHERE history.applicant_id = ?
+         AND EXISTS (SELECT 1 FROM applicants a WHERE a.id = history.applicant_id AND ${activeApplicantRetentionSql("a")})
+       ORDER BY history.changed_at DESC`,
+    ).bind(id, accessTime).all<HistoryRow>(),
     cvRow?.cv_key ? privateFiles().head(cvRow.cv_key) : Promise.resolve(null),
     database().prepare(
       `SELECT status, error FROM background_jobs
@@ -119,7 +128,7 @@ export default async function ApplicantDetailPage({ params }: { params: Promise<
           {actor.role === "super_user" && (!deletionQueued || deletionJob?.status === "failed" || !deletionJob) ? (
             <Panel title={deletionQueued ? "Retry permanent deletion" : "Permanent deletion"} meta="Super User only">
               <div className={styles.panelBody}>
-                <p className={styles.noteBody}>Queues removal of the applicant record, notes, status history, queued emails and private CV. Only non-identifying audit evidence is retained.</p>
+                <p className={styles.noteBody}>Queues removal of the applicant record, notes, status history, related jobs, applicant-linked audit history and private CV. Monitoring retains aggregate maintenance counts only.</p>
                 <ActionForm action={`/api/admin/applicants/${id}`} method="DELETE" submitLabel={deletionQueued ? "Requeue permanent deletion" : "Queue permanent deletion"} pendingLabel="Queuing…" buttonTone="danger" confirmation="Permanently delete this applicant and their private CV? This cannot be undone." redirectTo="/admin/applicants">
                   <label className={styles.label} htmlFor="deletion-reason">Approved reason</label>
                   <select className={styles.select} id="deletion-reason" name="reason" required>

@@ -3,6 +3,7 @@ import { EmptyState, PageHeader, StatusBadge, adminStyles as styles } from "@/co
 import { d1LikePattern } from "@/lib/d1-query";
 import { PUBLICATION_STATUSES, formatAdminDate, titleCaseStatus, type PublicationStatus } from "@/lib/admin-data";
 import { database } from "@/lib/platform";
+import { actionablePublicationWarnings } from "@/lib/publication-warnings";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ type Row = {
   updated_at: number;
   parse_warnings: string;
   parse_error: string | null;
+  scan_status: string | null;
 };
 
 function one(value: string | string[] | undefined): string {
@@ -40,7 +42,11 @@ export default async function PublicationsAdminPage({
     bindings.push(like, like, like);
   }
   const statement = database().prepare(
-    `SELECT id, title, type, status, publication_date, updated_at, parse_warnings, parse_error
+    `SELECT id, title, type, status, publication_date, updated_at, parse_warnings, parse_error,
+       (SELECT jobs.status FROM background_jobs jobs
+        WHERE jobs.type = 'file_scan'
+          AND json_extract(jobs.payload, '$.publicationId') = publications.id
+        ORDER BY jobs.created_at DESC LIMIT 1) AS scan_status
      FROM publications ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
      ORDER BY updated_at DESC LIMIT 200`,
   );
@@ -82,10 +88,19 @@ export default async function PublicationsAdminPage({
         {result.results.length ? (
           <div className={styles.tableWrap}>
             <table className={styles.table}>
-              <thead><tr><th>Publication</th><th>Type</th><th>Status</th><th>Publication date</th><th>Updated</th><th>Attention</th></tr></thead>
+              <thead><tr><th>Publication</th><th>Type</th><th>Status</th><th>Publication date</th><th>Updated</th><th>Attention</th><th>Action</th></tr></thead>
               <tbody>
                 {result.results.map((item) => {
-                  const warningCount = (() => { try { const value: unknown = JSON.parse(item.parse_warnings); return Array.isArray(value) ? value.length : 0; } catch { return 0; } })();
+                  const warningCount = actionablePublicationWarnings(
+                    item.parse_warnings,
+                  ).length;
+                  const attention = item.parse_error
+                    ? "Parse failed"
+                    : warningCount
+                      ? `${warningCount} warning${warningCount === 1 ? "" : "s"} to review`
+                      : ["uploaded", "parsing"].includes(item.status) && item.scan_status
+                        ? `Security scan ${item.scan_status}`
+                        : null;
                   return (
                     <tr key={item.id}>
                       <td><Link className={styles.primaryCell} href={`/admin/publications/${item.id}`}>{item.title}</Link></td>
@@ -93,7 +108,8 @@ export default async function PublicationsAdminPage({
                       <td><StatusBadge value={titleCaseStatus(item.status)} /></td>
                       <td>{formatAdminDate(item.publication_date)}</td>
                       <td>{formatAdminDate(item.updated_at, true)}</td>
-                      <td>{item.parse_error ? <StatusBadge value="Parse failed" /> : warningCount ? `${warningCount} warning${warningCount === 1 ? "" : "s"}` : "—"}</td>
+                      <td>{attention ? <StatusBadge value={titleCaseStatus(attention)} /> : "—"}</td>
+                      <td><Link className={styles.buttonQuiet} href={`/admin/publications/${item.id}`}>Manage</Link></td>
                     </tr>
                   );
                 })}

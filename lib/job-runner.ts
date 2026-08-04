@@ -1742,33 +1742,22 @@ async function finishFailedJob(
   if (terminal && publicationId && key) {
     const publicationTypePredicate =
       job.type === "file_scan" ? "" : "AND type IN ('strategic', 'legal')";
+    // An editor may take over a parser job while its worker still owns a
+    // lease. Keep this guard in the mutation itself so a late terminal result
+    // cannot move that recovered Draft back to parse_failed.
+    const publicationStatusPredicate =
+      job.type === "publication_parse" ? "AND status = 'parsing'" : "";
     statements.push(
-      database()
-        .prepare(
-          `UPDATE publications
-           SET status = 'parse_failed', parse_error = ?, updated_at = ?
-           WHERE id = ? AND source_pdf_key = ? ${publicationTypePredicate}
-             AND EXISTS (
-               SELECT 1 FROM background_jobs
-               WHERE id = ? AND status = 'running' AND claim_token = ?
-             )`,
-        )
-        .bind(
-          job.type === "file_scan"
-            ? "The source PDF did not pass the required security scan."
-            : "The parser could not produce a draft after repeated attempts.",
-          now,
-          publicationId,
-          key,
-          job.id,
-          claimToken,
-        ),
+      // Insert the audit row before the guarded state transition. D1 batches
+      // execute in order, so the pre-transition `status = 'parsing'` predicate
+      // still distinguishes a genuine parser failure from a recovered Draft.
       database()
         .prepare(
           `INSERT INTO audit_log
            (id, actor_id, action, entity_type, entity_id, metadata, created_at)
            SELECT ?, NULL, ?, 'publication', id, ?, ?
            FROM publications WHERE id = ? AND source_pdf_key = ?
+             ${publicationStatusPredicate}
              AND EXISTS (
                SELECT 1 FROM background_jobs
                WHERE id = ? AND status = 'running' AND claim_token = ?
@@ -1780,6 +1769,27 @@ async function finishFailedJob(
             ? "publication.file_scan_failed"
             : "publication.parse_failed",
           JSON.stringify({ jobId: job.id, attempts }),
+          now,
+          publicationId,
+          key,
+          job.id,
+          claimToken,
+        ),
+      database()
+        .prepare(
+          `UPDATE publications
+           SET status = 'parse_failed', parse_error = ?, updated_at = ?
+           WHERE id = ? AND source_pdf_key = ? ${publicationTypePredicate}
+             ${publicationStatusPredicate}
+             AND EXISTS (
+               SELECT 1 FROM background_jobs
+               WHERE id = ? AND status = 'running' AND claim_token = ?
+             )`,
+        )
+        .bind(
+          job.type === "file_scan"
+            ? "The source PDF did not pass the required security scan."
+            : "The parser could not produce a draft after repeated attempts.",
           now,
           publicationId,
           key,

@@ -104,7 +104,10 @@ export async function POST(request: Request) {
   });
 
   const now = Date.now();
-  const warnings = type === "markets" ? [] : ["Extraction will begin after the source file passes the configured malware scan."];
+  // Security scanning is a workflow state, not an editorial/parser warning.
+  // Keeping these separate means Admins see a precise action instead of an
+  // apparently dismissible warning while the source remains quarantined.
+  const warnings: unknown[] = [];
   try {
     await database().batch([
       database()

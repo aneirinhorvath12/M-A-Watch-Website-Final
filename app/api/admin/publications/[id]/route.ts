@@ -15,6 +15,10 @@ import { getPublicationAdmin } from "@/lib/admin-data";
 import { writeAudit } from "@/lib/audit";
 import { createId, database, privateFiles, safeJson } from "@/lib/platform";
 import { publicationSearchText } from "@/lib/publication-search-text";
+import {
+  actionablePublicationWarnings,
+  manualRecoveryWarning,
+} from "@/lib/publication-warnings";
 import { managedArticleImageKeys } from "@/lib/managed-images";
 import type { ArticleBlock } from "@/lib/publications/types";
 import {
@@ -124,6 +128,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   let featured = existing.featured;
   let webBody = existing.web_body;
   let bodyMissingAlt = false;
+  let parseWarnings = JSON.stringify(
+    actionablePublicationWarnings(existing.parse_warnings),
+  );
+  let parseError = existing.parse_error;
 
   if (payload.title !== undefined) {
     title = stringValue(payload.title, 220);
@@ -182,11 +190,67 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   let publishedAt = existing.published_at;
   let publishedBy: string | null = null;
   const now = Date.now();
+  const warningsBeforeAction = actionablePublicationWarnings(
+    existing.parse_warnings,
+  );
+  let acknowledgedWarningCount = 0;
+  let parserFailureRecovered = false;
+  let automaticParsingBypassed = false;
 
-  if (intent === "manual_draft") status = "draft";
-  else if (intent === "review") {
+  if (intent === "manual_draft") {
+    if (!["uploaded", "parsing", "parse_failed"].includes(existing.status)) {
+      return apiError(
+        "Manual parser recovery is available only while processing is incomplete or failed.",
+        409,
+      );
+    }
+    status = "draft";
+    parserFailureRecovered =
+      existing.status === "parse_failed" || Boolean(existing.parse_error);
+    automaticParsingBypassed = existing.type !== "markets";
+    parseError = null;
+    parseWarnings = JSON.stringify(
+      automaticParsingBypassed
+        ? [...warningsBeforeAction, manualRecoveryWarning()]
+        : warningsBeforeAction,
+    );
+  } else if (intent === "acknowledge_warnings") {
+    if (!["draft", "review"].includes(existing.status)) {
+      return apiError(
+        "Move the publication to a manual Draft before reviewing parser warnings.",
+        409,
+      );
+    }
+    if (existing.parse_error) {
+      return apiError(
+        "Recover the parser failure with a manual Draft before reviewing its warnings.",
+        409,
+      );
+    }
+    if (!warningsBeforeAction.length) {
+      return apiError("There are no parser warnings awaiting review.", 409);
+    }
+    if (
+      existing.type !== "markets" &&
+      safeJson<unknown[]>(webBody, []).length === 0
+    ) {
+      return apiError(
+        "Add and save at least one article block before marking parser warnings reviewed.",
+        422,
+      );
+    }
+    acknowledgedWarningCount = warningsBeforeAction.length;
+    parseWarnings = "[]";
+    parseError = null;
+  } else if (intent === "review") {
     if (existing.type !== "markets" && safeJson<unknown[]>(webBody, []).length === 0) {
       return apiError("Add at least one approved article block before sending this publication to review.", 422);
+    }
+    if (actionablePublicationWarnings(parseWarnings).length) {
+      return apiError(
+        "Review and acknowledge every parser warning before sending this publication to Review.",
+        409,
+      );
     }
     status = "review";
   } else if (intent === "publish" || intent === "schedule") {
@@ -204,6 +268,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return apiError("Strategic and Legal reports need approved web content before publication.", 422);
     }
     if (bodyMissingAlt) return apiError("Every report image needs alternative text before publication.", 422);
+    if (actionablePublicationWarnings(parseWarnings).length) {
+      return apiError(
+        "Review and acknowledge every parser warning before publishing or scheduling.",
+        409,
+      );
+    }
     const security = await scanReady(existing.id, existing.source_pdf_key);
     if (!security.ok) return apiError(security.error ?? "The source file is not ready.", 423);
 
@@ -226,11 +296,20 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   } else if (intent === "archive") {
     status = "archived";
     scheduledAt = null;
+  } else if (intent === "restore") {
+    if (existing.status !== "archived") {
+      return apiError("Only an archived publication can be restored.", 409);
+    }
+    status = "draft";
+    scheduledAt = null;
+    publishedAt = null;
   } else if (intent !== "save") {
     return apiError("Unsupported publication action.", 400);
   }
 
-  const revisionNumber = bodyChanged
+  const createsRecoveryRevision =
+    intent === "manual_draft" || intent === "acknowledge_warnings";
+  const revisionNumber = bodyChanged || createsRecoveryRevision
     ? ((await database().prepare("SELECT COALESCE(MAX(revision_number), 0) AS value FROM publication_revisions WHERE publication_id = ?").bind(id).first<{ value: number }>())?.value ?? 0) + 1
     : null;
   const statements: D1PreparedStatement[] = [];
@@ -240,7 +319,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         .prepare(
           `INSERT INTO publication_revisions
            (id, publication_id, revision_number, source_pdf_key, web_body, parse_warnings, note, created_by, created_at)
-           SELECT ?, id, ?, source_pdf_key, ?, ?, 'Editorial save', ?, ?
+           SELECT ?, id, ?, source_pdf_key, ?, ?, ?, ?, ?
            FROM publications
            WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ?`,
         )
@@ -249,6 +328,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           revisionNumber,
           webBody,
           existing.parse_warnings,
+          intent === "manual_draft"
+            ? "Manual recovery from automatic parsing"
+            : intent === "acknowledge_warnings"
+              ? "Parser warnings reviewed and acknowledged"
+              : "Editorial save",
           auth.actor.id,
           now,
           id,
@@ -264,7 +348,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         `UPDATE publications SET title = ?, slug = ?, summary = ?, publication_date = ?,
           authors = ?, chapter = ?, featured = ?, web_body = ?, status = ?, scheduled_at = ?,
           published_at = ?, published_by = COALESCE(?, published_by), updated_by = ?, updated_at = ?,
-          search_text = ?
+          search_text = ?, parse_warnings = ?, parse_error = ?
           WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ?`,
       )
       .bind(
@@ -274,6 +358,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           boundedSearchText([title, summary, ...safeJson<string[]>(authors, []), chapter ?? ""]),
           storedBody.blocks ?? [],
         ),
+        parseWarnings,
+        parseError,
         id,
         existing.source_pdf_key,
         existing.status,
@@ -294,14 +380,31 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     action,
     entityType: "publication",
     entityId: id,
-    metadata: { fromStatus: existing.status, toStatus: status, revisionCreated: Boolean(revisionNumber) },
+    metadata: {
+      fromStatus: existing.status,
+      toStatus: status,
+      revisionCreated: Boolean(revisionNumber),
+      acknowledgedWarningCount,
+      parserFailureRecovered,
+      automaticParsingBypassed,
+    },
   });
   if (bodyChanged) {
     await deleteUnreferencedManagedImages(
       [...previousManagedImages].filter((key) => !nextManagedImages.has(key)),
     );
   }
-  return Response.json({ ok: true, message: intent === "save" ? "Publication saved." : `Publication moved to ${status.replace(/_/g, " ")}.` });
+  const message =
+    intent === "save"
+      ? "Publication saved."
+      : intent === "manual_draft"
+        ? "Manual draft created. Edit the article and review any retained parser warnings."
+        : intent === "acknowledge_warnings"
+          ? `${acknowledgedWarningCount} parser warning${acknowledgedWarningCount === 1 ? "" : "s"} marked reviewed.`
+          : intent === "restore"
+            ? "Publication restored to draft."
+            : `Publication moved to ${status.replace(/_/g, " ")}.`;
+  return Response.json({ ok: true, message });
 }
 
 async function deleteUnreferencedManagedImages(keys: readonly string[]): Promise<void> {
@@ -352,7 +455,7 @@ async function replaceSource(
 
   const now = Date.now();
   const nextRevision = ((await database().prepare("SELECT COALESCE(MAX(revision_number), 0) AS value FROM publication_revisions WHERE publication_id = ?").bind(existing.id).first<{ value: number }>())?.value ?? 0) + 1;
-  const warning = existing.type === "markets" ? [] : ["Replacement extraction is waiting for the source file security scan. Prior editorial content has been preserved."];
+  const warning: unknown[] = [];
   try {
     const scanJobId = createId("job");
     const replacementResults = await database().batch([

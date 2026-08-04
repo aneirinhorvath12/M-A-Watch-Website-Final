@@ -405,10 +405,13 @@ function securityD1({
   publications = [],
   teamMembers = [],
   contentEntries = [],
+  queuedJobs = [],
   analyticsAttempts = 1,
   publicationMutationChanges = 1,
+  modelPublicationParserFailure = false,
 } = {}) {
   const calls = [];
+  const auditActions = [];
   const schema = [
     "admin_users",
     "publications",
@@ -506,6 +509,9 @@ function securityD1({
       calls.push({ operation: "all", sql, bindings });
       if (sql.includes("FROM sqlite_schema")) return { results: schema };
       if (sql.includes("FROM admin_users ORDER BY")) return { results: admins };
+      if (sql.includes("SELECT id, type, payload, attempts FROM background_jobs")) {
+        return { results: queuedJobs };
+      }
       if (sql.includes("SELECT key, draft_value FROM content_entries")) {
         return { results: contentEntries };
       }
@@ -513,6 +519,22 @@ function securityD1({
     },
     run: async () => {
       calls.push({ operation: "run", sql, bindings });
+      if (modelPublicationParserFailure && bindings[1] === "publication.parse_failed" && sql.includes("INSERT INTO audit_log")) {
+        const publication = publications.find(
+          (candidate) => candidate.id === bindings[4] && candidate.source_pdf_key === bindings[5],
+        );
+        const changes = publication?.status === "parsing" ? 1 : 0;
+        if (changes) auditActions.push(bindings[1]);
+        return { meta: { changes } };
+      }
+      if (modelPublicationParserFailure && sql.includes("SET status = 'parse_failed', parse_error = ?")) {
+        const publication = publications.find(
+          (candidate) => candidate.id === bindings[2] && candidate.source_pdf_key === bindings[3],
+        );
+        const changes = publication?.status === "parsing" ? 1 : 0;
+        if (changes) publication.status = "parse_failed";
+        return { meta: { changes } };
+      }
       if (
         sql.includes("UPDATE publications SET title = ?") ||
         sql.includes("UPDATE publications SET source_pdf_key = ?") ||
@@ -532,6 +554,7 @@ function securityD1({
       batch: async (statements) => Promise.all(statements.map((item) => item.run())),
     },
     calls,
+    auditActions,
   };
 }
 
@@ -853,6 +876,158 @@ test("publication creation stores an extensionless valid source under a safe .pd
     r2.puts[0].options.customMetadata.originalFilename,
     "uploaded-source.pdf",
   );
+  assert.doesNotMatch(
+    JSON.stringify(d1.calls),
+    /Extraction will begin after the source file passes the configured malware scan/,
+  );
+});
+
+test("an admin can recover a parser failure and acknowledge retained warnings", async () => {
+  const admin = adminRow();
+  const publicationId = "publication_44444444-4444-4444-8444-444444444444";
+  const basePublication = {
+    id: publicationId,
+    type: "strategic",
+    title: "Manual recovery report",
+    slug: "manual-recovery-report",
+    summary: "A publication used to verify parser recovery controls.",
+    publication_date: Date.parse("2026-08-04T12:00:00.000Z"),
+    status: "parse_failed",
+    scheduled_at: null,
+    authors: JSON.stringify(["M&A Watch"]),
+    chapter: null,
+    cover_image_key: null,
+    source_pdf_key: `private/publications/${publicationId}/source.pdf`,
+    web_body: JSON.stringify([
+      { id: "intro", type: "paragraph", content: [{ text: "Manually checked body." }] },
+    ]),
+    parser_version: "fixture",
+    parse_warnings: JSON.stringify(["Check a low-confidence table."]),
+    parse_error: "The parser could not read the source layout.",
+    structured_metadata: "{}",
+    featured: 0,
+    created_at: 1_000,
+    updated_at: 2_000,
+    published_at: null,
+  };
+  const mutationHeaders = {
+    origin: "https://mawatch.test",
+    "sec-fetch-site": "same-origin",
+    "content-type": "application/json",
+  };
+
+  const recoveryD1 = securityD1({
+    admins: [admin],
+    publications: [basePublication],
+  });
+  const recovery = await fetchSecurityRoute(`/api/admin/publications/${publicationId}`, {
+    d1: recoveryD1,
+    identity: admin,
+    method: "PATCH",
+    headers: mutationHeaders,
+    body: JSON.stringify({ intent: "manual_draft" }),
+  });
+  assert.equal(recovery.status, 200);
+  const recoveryUpdate = recoveryD1.calls.find(
+    (call) => call.operation === "run" && call.sql.includes("UPDATE publications SET title = ?"),
+  );
+  assert.equal(recoveryUpdate?.bindings[8], "draft");
+  assert.equal(recoveryUpdate?.bindings[16], null);
+  assert.match(recoveryUpdate?.bindings[15] ?? "", /MANUAL_PARSER_RECOVERY/);
+  assert.match(recoveryUpdate?.bindings[15] ?? "", /low-confidence table/);
+
+  const bypassD1 = securityD1({
+    admins: [admin],
+    publications: [{
+      ...basePublication,
+      status: "uploaded",
+      parse_error: null,
+      parse_warnings: "[]",
+      updated_at: 2_500,
+    }],
+  });
+  const bypass = await fetchSecurityRoute(`/api/admin/publications/${publicationId}`, {
+    d1: bypassD1,
+    identity: admin,
+    method: "PATCH",
+    headers: mutationHeaders,
+    body: JSON.stringify({ intent: "manual_draft" }),
+  });
+  assert.equal(bypass.status, 200);
+  const bypassUpdate = bypassD1.calls.find(
+    (call) => call.operation === "run" && call.sql.includes("UPDATE publications SET title = ?"),
+  );
+  assert.match(bypassUpdate?.bindings[15] ?? "", /MANUAL_PARSER_RECOVERY/);
+
+  const acknowledgeD1 = securityD1({
+    admins: [admin],
+    publications: [{
+      ...basePublication,
+      status: "draft",
+      parse_error: null,
+      parse_warnings: recoveryUpdate.bindings[15],
+      updated_at: 3_000,
+    }],
+  });
+  const acknowledged = await fetchSecurityRoute(`/api/admin/publications/${publicationId}`, {
+    d1: acknowledgeD1,
+    identity: admin,
+    method: "PATCH",
+    headers: mutationHeaders,
+    body: JSON.stringify({ intent: "acknowledge_warnings" }),
+  });
+  assert.equal(acknowledged.status, 200);
+  const acknowledgeUpdate = acknowledgeD1.calls.find(
+    (call) => call.operation === "run" && call.sql.includes("UPDATE publications SET title = ?"),
+  );
+  assert.equal(acknowledgeUpdate?.bindings[15], "[]");
+  assert.equal(acknowledgeUpdate?.bindings[16], null);
+});
+
+test("a late terminal parser failure preserves manual recovery but audits a genuine parsing failure", async () => {
+  const publicationId = "publication_55555555-5555-4555-8555-555555555555";
+  const sourceKey = `private/publications/${publicationId}/source.pdf`;
+  const job = {
+    id: "job_55555555-5555-4555-8555-555555555555",
+    type: "publication_parse",
+    payload: JSON.stringify({ publicationId, key: sourceKey }),
+    attempts: 0,
+  };
+  const runtime = {
+    MAINTENANCE_TOKEN: "maintenance-secret",
+    PARSER_WEBHOOK_URL: "https://parser.mawatch.test/extract",
+    PARSER_WEBHOOK_TOKEN: "parser-secret",
+  };
+
+  async function runTerminalFailure(status) {
+    const publication = {
+      id: publicationId,
+      type: "strategic",
+      status,
+      source_pdf_key: sourceKey,
+    };
+    const d1 = securityD1({
+      publications: [publication],
+      queuedJobs: [job],
+      modelPublicationParserFailure: true,
+    });
+    const response = await fetchSecurityRoute("/api/maintenance", {
+      d1,
+      runtime,
+      method: "POST",
+      headers: { authorization: "Bearer maintenance-secret" },
+    });
+    assert.equal(response.status, 200);
+    return { d1, publication };
+  }
+
+  const recovered = await runTerminalFailure("draft");
+  assert.equal(recovered.publication.status, "draft");
+  assert.deepEqual(recovered.d1.auditActions, []);
+
+  const processing = await runTerminalFailure("parsing");
+  assert.equal(processing.publication.status, "parse_failed");
+  assert.deepEqual(processing.d1.auditActions, ["publication.parse_failed"]);
 });
 
 test("publication publish and source replacement reject a stale editorial snapshot", async () => {

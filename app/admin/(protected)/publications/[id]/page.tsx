@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
@@ -7,20 +8,18 @@ import { PublicationJobStatus } from "@/components/admin/PublicationJobStatus";
 import { StructuredBlockEditor } from "@/components/admin/StructuredBlockEditor";
 import { formatAdminDate, getPublicationAdmin, titleCaseStatus } from "@/lib/admin-data";
 import { publicationCoverFromStored } from "@/lib/managed-images";
+import { resolveMalwareProvider } from "@/lib/malware-provider";
+import { resolveParserProvider } from "@/lib/parser/provider";
 import { database, privateFiles, safeJson } from "@/lib/platform";
+import {
+  actionablePublicationWarnings,
+  publicationWarningMessage,
+} from "@/lib/publication-warnings";
 
 export const dynamic = "force-dynamic";
 
 type RevisionRow = { id: string; revision_number: number; note: string | null; created_at: number; created_by_name: string | null };
 type JobRow = { id: string; type: string; status: string; error: string | null; created_at: number; updated_at: number };
-
-function warningText(value: unknown): string {
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object" && "message" in value && typeof (value as { message: unknown }).message === "string") {
-    return (value as { message: string }).message;
-  }
-  return "An editorial warning needs review.";
-}
 
 function londonDateTimeValue(value: number | null): string {
   if (!value) return "";
@@ -48,7 +47,7 @@ export default async function PublicationReviewPage({ params }: { params: Promis
     ).bind(id).all<JobRow>(),
     publication.source_pdf_key ? privateFiles().head(publication.source_pdf_key) : Promise.resolve(null),
   ]);
-  const warnings = safeJson<unknown[]>(publication.parse_warnings, []);
+  const warnings = actionablePublicationWarnings(publication.parse_warnings);
   const authors = safeJson<string[]>(publication.authors, []);
   const cover = publicationCoverFromStored(publication.cover_image_key, publication.id);
   const scanJob = jobs.results.find((job) => job.type === "file_scan");
@@ -59,6 +58,31 @@ export default async function PublicationReviewPage({ params }: { params: Promis
       : scanJob?.status === "failed" || object.customMetadata?.scanStatus === "rejected"
         ? "failed"
         : scanJob?.status ?? "queued";
+  const runtime = env as Parameters<typeof resolveMalwareProvider>[0] &
+    Parameters<typeof resolveParserProvider>[0];
+  const malwareScannerConfigured = Boolean(resolveMalwareProvider(runtime));
+  const parserConfigured =
+    publication.type === "markets" || Boolean(resolveParserProvider(runtime));
+  const hasArticleBody = safeJson<unknown[]>(publication.web_body, []).length > 0;
+  const canRecoverManually = ["uploaded", "parsing", "parse_failed"].includes(
+    publication.status,
+  );
+  const canAcknowledgeWarnings =
+    warnings.length > 0 &&
+    !publication.parse_error &&
+    ["draft", "review"].includes(publication.status) &&
+    (publication.type === "markets" || hasArticleBody);
+  const canSendToReview =
+    publication.type !== "markets" &&
+    publication.status === "draft" &&
+    warnings.length === 0 &&
+    !publication.parse_error;
+  const canPublishOrSchedule =
+    warnings.length === 0 &&
+    !publication.parse_error &&
+    (publication.type === "markets"
+      ? ["draft", "review", "scheduled"].includes(publication.status)
+      : ["review", "scheduled"].includes(publication.status));
 
   return (
     <>
@@ -71,47 +95,82 @@ export default async function PublicationReviewPage({ params }: { params: Promis
 
       {scanStatus !== "succeeded" ? (
         <div className={styles.noticeWarning} role="status">
-          <strong>Source security status: {titleCaseStatus(scanStatus)}.</strong> Built-in PDF inspection passed at upload, but publishing is locked until the external malware-scanning integration reports this file as clean.
+          <strong>Source security status: {titleCaseStatus(scanStatus)}.</strong>{" "}
+          {!malwareScannerConfigured
+            ? "This environment does not have an external malware scanner configured. You may switch to manual editing, but publishing remains locked until a scanner reports the source as clean."
+            : scanStatus === "failed"
+              ? "The scan did not complete successfully. Replace the PDF or ask an operator to retry processing; publishing remains locked."
+              : "Built-in PDF inspection passed at upload. Automated processing may continue in the background, and publishing remains locked until the external scanner reports this file as clean."}
         </div>
       ) : <div className={styles.noticeSuccess}>Source file security scan succeeded.</div>}
+      {publication.type !== "markets" && !parserConfigured ? (
+        <div className={styles.noticeWarning} role="status">
+          <strong>Automatic PDF extraction is not configured.</strong> Use the manual-draft recovery action and build the approved web article in the editor below.
+        </div>
+      ) : null}
       <PublicationJobStatus publicationId={publication.id} initialStatus={publication.status} />
-      {publication.parse_error ? <div className={styles.noticeError} role="alert"><strong>Parser failed:</strong> {publication.parse_error}</div> : null}
+      {publication.parse_error ? <div className={styles.noticeError} role="alert"><strong>Automatic extraction failed:</strong> {publication.parse_error} Nothing has been published. Recover with a manual draft, edit it below and compare it with the source PDF.</div> : null}
       {warnings.length ? (
         <div className={styles.noticeWarning}>
-          <strong>{warnings.length} parser or workflow warning{warnings.length === 1 ? "" : "s"}</strong>
-          <ul className={styles.warningList}>{warnings.map((warning, index) => <li key={index}>{warningText(warning)}</li>)}</ul>
+          <strong>{warnings.length} parser warning{warnings.length === 1 ? "" : "s"} awaiting editorial review</strong>
+          <p>Correct the article in the editor, save it, then mark these warnings reviewed. The original warnings remain in revision and audit history.</p>
+          <ul className={styles.warningList}>{warnings.map((warning, index) => <li key={index}>{publicationWarningMessage(warning)}</li>)}</ul>
+          {canAcknowledgeWarnings ? (
+            <ActionForm
+              action={`/api/admin/publications/${id}`}
+              method="PATCH"
+              submitLabel="Mark warnings reviewed"
+              buttonTone="secondary"
+              confirmation={`Confirm that you checked the edited article against the source PDF and resolved all ${warnings.length} warning${warnings.length === 1 ? "" : "s"}?`}
+            >
+              <input type="hidden" name="intent" value="acknowledge_warnings" />
+            </ActionForm>
+          ) : (
+            <p className={styles.hint}>Create or recover a manual Draft and save at least one checked article block before acknowledging these warnings.</p>
+          )}
         </div>
       ) : null}
 
       <Panel title="Editorial workflow" meta="Times are entered in Europe/London">
         <div className={styles.panelBody}>
           <div className={styles.buttonRow}>
-            {publication.status === "uploaded" || publication.status === "parse_failed" ? (
-              <ActionForm action={`/api/admin/publications/${id}`} method="PATCH" submitLabel="Create manual draft" buttonTone="secondary">
+            {canRecoverManually ? (
+              <ActionForm
+                action={`/api/admin/publications/${id}`}
+                method="PATCH"
+                submitLabel={publication.status === "parse_failed" ? "Recover with manual draft" : "Switch to manual editing"}
+                buttonTone="secondary"
+                confirmation="Stop waiting for automatic extraction and continue with a manual editable draft? Any later parser result will be retained in revision history and will not overwrite your edits."
+              >
                 <input type="hidden" name="intent" value="manual_draft" />
               </ActionForm>
             ) : null}
-            {publication.status !== "review" && publication.status !== "published" && publication.status !== "archived" ? (
+            {canSendToReview ? (
               <ActionForm action={`/api/admin/publications/${id}`} method="PATCH" submitLabel="Send to review" buttonTone="secondary">
                 <input type="hidden" name="intent" value="review" />
               </ActionForm>
             ) : null}
-            {publication.status !== "published" ? (
+            {canPublishOrSchedule ? (
               <ActionForm action={`/api/admin/publications/${id}`} method="PATCH" submitLabel="Publish now" confirmation="Publish this item to the public website now?">
                 <input type="hidden" name="intent" value="publish" />
               </ActionForm>
-            ) : (
+            ) : publication.status === "published" ? (
               <ActionForm action={`/api/admin/publications/${id}`} method="PATCH" submitLabel="Unpublish to draft" buttonTone="secondary" confirmation="Remove this publication from the public website?">
                 <input type="hidden" name="intent" value="unpublish" />
               </ActionForm>
-            )}
+            ) : null}
+            {publication.status === "archived" ? (
+              <ActionForm action={`/api/admin/publications/${id}`} method="PATCH" submitLabel="Restore to draft" buttonTone="secondary">
+                <input type="hidden" name="intent" value="restore" />
+              </ActionForm>
+            ) : null}
             {publication.status !== "archived" ? (
               <ActionForm action={`/api/admin/publications/${id}`} method="PATCH" submitLabel="Archive" buttonTone="danger" confirmation="Archive this publication? It will not be public.">
                 <input type="hidden" name="intent" value="archive" />
               </ActionForm>
             ) : null}
           </div>
-          {publication.status !== "published" && publication.status !== "archived" ? (
+          {canPublishOrSchedule ? (
             <ActionForm action={`/api/admin/publications/${id}`} method="PATCH" submitLabel="Schedule publication" buttonTone="secondary" confirmation="Schedule this publication using Europe/London editorial time?">
               <input type="hidden" name="intent" value="schedule" />
               <div className={styles.fieldHalf}>
@@ -119,6 +178,9 @@ export default async function PublicationReviewPage({ params }: { params: Promis
                 <input className={styles.input} id="scheduledAt" name="scheduledAt" type="datetime-local" defaultValue={londonDateTimeValue(publication.scheduled_at)} required />
               </div>
             </ActionForm>
+          ) : null}
+          {!canRecoverManually && !canSendToReview && !canPublishOrSchedule && publication.status !== "published" && publication.status !== "archived" ? (
+            <p className={styles.hint}>Save the article, resolve its parser warnings and follow the displayed recovery action before advancing the workflow.</p>
           ) : null}
         </div>
       </Panel>

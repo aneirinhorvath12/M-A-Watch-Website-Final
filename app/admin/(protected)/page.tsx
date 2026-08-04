@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { database, safeJson } from "@/lib/platform";
 import { formatAdminDate, titleCaseStatus } from "@/lib/admin-data";
 import { currentRecruitmentReadiness } from "@/lib/recruitment-runtime";
+import { LEGACY_SOURCE_WORKFLOW_MESSAGES } from "@/lib/publication-warnings";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,14 @@ export default async function AdminDashboardPage({
   const params = await searchParams;
   const [review, attention, newApplicants, scheduled, applicationSettings, publications, activity, statusCounts, jobs] = await Promise.all([
     database().prepare("SELECT COUNT(*) AS count FROM publications WHERE status = 'review'").first<CountRow>(),
-    database().prepare("SELECT COUNT(*) AS count FROM publications WHERE status = 'parse_failed' OR parse_warnings != '[]'").first<CountRow>(),
+    database().prepare(
+      `SELECT COUNT(*) AS count FROM publications
+       WHERE status = 'parse_failed'
+          OR EXISTS (
+            SELECT 1 FROM json_each(publications.parse_warnings) warning
+            WHERE warning.value NOT IN (?, ?)
+          )`,
+    ).bind(...LEGACY_SOURCE_WORKFLOW_MESSAGES).first<CountRow>(),
     database().prepare("SELECT COUNT(*) AS count FROM applicants WHERE status = 'new' AND deletion_requested_at IS NULL").first<CountRow>(),
     database().prepare("SELECT COUNT(*) AS count FROM publications WHERE status = 'scheduled'").first<CountRow>(),
     database().prepare("SELECT open, notification_recipients, privacy_policy_version, retention_days FROM application_settings WHERE id = 1").first<{ open: number; notification_recipients: string; privacy_policy_version: string; retention_days: number | null }>(),

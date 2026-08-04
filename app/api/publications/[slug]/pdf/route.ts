@@ -30,6 +30,10 @@ export async function GET(
   headers.set("content-length", String(object.size));
   headers.set("content-disposition", `${download ? "attachment" : "inline"}; filename="${filename}"`);
   headers.set("cache-control", "public, max-age=3600, must-revalidate");
+  headers.set(
+    "content-security-policy",
+    "base-uri 'none'; object-src 'none'; frame-ancestors 'self'; form-action 'none'",
+  );
   headers.set("x-content-type-options", "nosniff");
   return new Response(object.body, { headers });
 }

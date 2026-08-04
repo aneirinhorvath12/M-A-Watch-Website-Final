@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   formatPublicationDate,
   getLiveAdjacentPublications,
@@ -11,7 +12,13 @@ import { PdfViewer } from "./PdfViewer";
 import { RelatedPublications } from "./RelatedPublications";
 import styles from "./publications.module.css";
 
-export async function MarketsPublicationPage({ publication }: { publication: MarketsPublication }) {
+export async function MarketsPublicationPage({
+  publication,
+  privatePreview = false,
+}: {
+  publication: MarketsPublication;
+  privatePreview?: boolean;
+}) {
   const [related, adjacent] = await Promise.all([
     getLiveRelatedPublications(publication, 3),
     getLiveAdjacentPublications(publication),
@@ -33,14 +40,27 @@ export async function MarketsPublicationPage({ publication }: { publication: Mar
               <p className={styles.eyebrowLight}>Markets · Monthly briefing</p>
               <h1>{publication.title}</h1>
               <p>{publication.summary}</p>
-              <PdfActions filename={publication.pdfFilename} pdfUrl={publication.pdfUrl} />
+              <PdfActions filename={publication.pdfFilename} pdfUrl={publication.pdfUrl} publicationType={publication.type} />
             </div>
-            <div className={styles.marketsIssueArtwork} aria-hidden="true">
-              <span>M&amp;A WATCH</span>
-              <strong>MARKETS</strong>
-              <small>{formatPublicationDate(publication.publicationDate)}</small>
-              <i />
-            </div>
+            {publication.cover ? (
+              <figure className={styles.marketsCover}>
+                <Image
+                  src={publication.cover.src}
+                  alt={publication.cover.alt}
+                  width={publication.cover.width}
+                  height={publication.cover.height}
+                  sizes="(max-width: 900px) 100vw, 36vw"
+                  unoptimized={privatePreview}
+                />
+              </figure>
+            ) : (
+              <div className={styles.marketsIssueArtwork} aria-hidden="true">
+                <span>M&amp;A WATCH</span>
+                <strong>MARKETS</strong>
+                <small>{formatPublicationDate(publication.publicationDate)}</small>
+                <i />
+              </div>
+            )}
           </div>
           <dl className={styles.marketsMeta}>
             <div>
@@ -78,6 +98,7 @@ export async function MarketsPublicationPage({ publication }: { publication: Mar
         <PdfViewer
           filename={publication.pdfFilename}
           pdfUrl={publication.pdfUrl}
+          publicationType={publication.type}
           title={publication.title}
         />
       </div>

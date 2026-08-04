@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Administration | M&A Watch",
+  title: "Administration",
   robots: { index: false, follow: false },
 };
 

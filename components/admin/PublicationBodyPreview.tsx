@@ -16,5 +16,5 @@ export function PublicationBodyPreview({ value }: { value: string }) {
   if (!blocks.length) {
     return <p className={styles.emptyText}>No approved web blocks have been saved yet.</p>;
   }
-  return <div className={styles.previewBox}><ArticleBody blocks={blocks} /></div>;
+  return <div className={styles.previewBox}><ArticleBody blocks={blocks} privatePreview /></div>;
 }

@@ -1,9 +1,12 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { PageHeader, Panel, StatusBadge, adminStyles as styles } from "@/components/admin/AdminUI";
+import { PublicationJobStatus } from "@/components/admin/PublicationJobStatus";
 import { StructuredBlockEditor } from "@/components/admin/StructuredBlockEditor";
 import { formatAdminDate, getPublicationAdmin, titleCaseStatus } from "@/lib/admin-data";
+import { publicationCoverFromStored } from "@/lib/managed-images";
 import { database, privateFiles, safeJson } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +50,7 @@ export default async function PublicationReviewPage({ params }: { params: Promis
   ]);
   const warnings = safeJson<unknown[]>(publication.parse_warnings, []);
   const authors = safeJson<string[]>(publication.authors, []);
+  const cover = publicationCoverFromStored(publication.cover_image_key, publication.id);
   const scanJob = jobs.results.find((job) => job.type === "file_scan");
   const scanStatus = !object
     ? "missing"
@@ -70,6 +74,7 @@ export default async function PublicationReviewPage({ params }: { params: Promis
           <strong>Source security status: {titleCaseStatus(scanStatus)}.</strong> Built-in PDF inspection passed at upload, but publishing is locked until the external malware-scanning integration reports this file as clean.
         </div>
       ) : <div className={styles.noticeSuccess}>Source file security scan succeeded.</div>}
+      <PublicationJobStatus publicationId={publication.id} initialStatus={publication.status} />
       {publication.parse_error ? <div className={styles.noticeError} role="alert"><strong>Parser failed:</strong> {publication.parse_error}</div> : null}
       {warnings.length ? (
         <div className={styles.noticeWarning}>
@@ -133,6 +138,47 @@ export default async function PublicationReviewPage({ params }: { params: Promis
               <div className={styles.fieldWide}><label className={styles.checkboxRow}><input type="checkbox" name="featured" value="true" defaultChecked={Boolean(publication.featured)} /> Feature when published</label></div>
             </div>
           </ActionForm>
+        </div>
+      </Panel>
+
+      <Panel title="Publication cover" meta="Optional · shown on cards and report pages">
+        <div className={styles.panelBody}>
+          {cover ? (
+            <div className={styles.previewBox}>
+              <Image
+                src={cover.src}
+                alt={cover.alt}
+                width={cover.width}
+                height={cover.height}
+                sizes="(max-width: 800px) 100vw, 520px"
+                unoptimized
+              />
+              <p className={styles.hint}>{cover.alt} · {cover.width} × {cover.height}px</p>
+            </div>
+          ) : <p className={styles.emptyText}>No cover is set. Branded fallback artwork is used publicly.</p>}
+          {publication.status !== "archived" ? (
+            <ActionForm
+              action={`/api/admin/publications/${id}/cover`}
+              mode="form-data"
+              submitLabel={cover ? "Replace cover" : "Upload cover"}
+              pendingLabel="Uploading…"
+              buttonTone="secondary"
+            >
+              <div className={styles.formGrid}>
+                <div className={styles.fieldWide}><label className={styles.label} htmlFor="cover">JPEG, PNG or WebP cover</label><input className={styles.input} id="cover" name="cover" type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" required /></div>
+                <div className={styles.fieldWide}><label className={styles.label} htmlFor="coverAlt">Alternative text</label><input className={styles.input} id="coverAlt" name="alt" defaultValue={cover?.alt ?? ""} maxLength={300} required /><span className={styles.hint}>Describe the cover&apos;s meaningful visual content; do not repeat “image of”.</span></div>
+              </div>
+            </ActionForm>
+          ) : null}
+          {cover ? (
+            <ActionForm
+              action={`/api/admin/publications/${id}/cover`}
+              method="DELETE"
+              submitLabel="Remove cover"
+              buttonTone="danger"
+              confirmation="Remove this cover? Public pages will return to the branded fallback artwork; an already loaded image may remain cached for up to five minutes."
+            />
+          ) : null}
         </div>
       </Panel>
 

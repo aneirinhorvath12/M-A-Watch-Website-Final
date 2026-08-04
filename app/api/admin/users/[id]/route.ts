@@ -1,8 +1,10 @@
+import { env } from "cloudflare:workers";
 import { ensureDatabase } from "@/db/bootstrap";
 import { apiError, authorizeAdminRequest, readJsonObject, stringValue } from "@/lib/admin-api";
 import { writeAudit } from "@/lib/audit";
 import { queueEmail } from "@/lib/email-queue";
 import { database } from "@/lib/platform";
+import { secureAdminLoginUrl } from "@/lib/recruitment-policy";
 
 type UserRow = {
   id: string;
@@ -28,13 +30,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const confirmationRequired = ["set_role", "disable", "reactivate", "revoke"].includes(action);
   if (confirmationRequired && payload.confirmed !== "true") return apiError("Explicit confirmation is required for this account change.", 422);
   const now = Date.now();
-  const invitationUrl = new URL("/admin/login", request.url).toString();
+  const invitationUrl = secureAdminLoginUrl(env.NEXT_PUBLIC_SITE_URL);
   let auditAction = "";
   let message = "Account updated.";
   let metadata: Record<string, unknown> = {};
 
   if (action === "resend") {
     if (target.status !== "invited") return apiError("Only a pending invitation can be resent.", 409);
+    if (!invitationUrl) {
+      return apiError(
+        "Administrative invitations require the canonical HTTPS site URL.",
+        503,
+      );
+    }
     const expiresAt = now + 7 * 24 * 60 * 60 * 1000;
     await database().prepare("UPDATE admin_users SET invitation_expires_at = ?, updated_at = ? WHERE id = ? AND status = 'invited'").bind(expiresAt, now, id).run();
     await queueEmail({ template: "account-invitation", to: [target.email], data: { name: target.name, role: target.role, invitationUrl, expiresAt: new Date(expiresAt).toISOString() } });
@@ -67,10 +75,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (target.status !== "disabled") return apiError("Only a disabled account can be reactivated.", 409);
     const nextStatus = target.external_user_id ? "active" : "invited";
     const expiresAt = nextStatus === "invited" ? now + 7 * 24 * 60 * 60 * 1000 : null;
+    if (nextStatus === "invited" && !invitationUrl) {
+      return apiError(
+        "Administrative invitations require the canonical HTTPS site URL.",
+        503,
+      );
+    }
     await database().prepare(
       "UPDATE admin_users SET status = ?, invitation_expires_at = ?, updated_at = ? WHERE id = ? AND status = 'disabled'",
     ).bind(nextStatus, expiresAt, now, id).run();
-    if (nextStatus === "invited") {
+    if (nextStatus === "invited" && invitationUrl) {
       await queueEmail({ template: "account-invitation", to: [target.email], data: { name: target.name, role: target.role, invitationUrl, expiresAt: new Date(expiresAt as number).toISOString() } });
     }
     auditAction = "account.reactivated";

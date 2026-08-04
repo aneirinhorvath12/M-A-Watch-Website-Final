@@ -53,6 +53,7 @@ export type PublicationAdminRow = {
   scheduled_at: number | null;
   authors: string;
   chapter: string | null;
+  cover_image_key: string | null;
   source_pdf_key: string | null;
   web_body: string;
   parser_version: string | null;
@@ -95,6 +96,9 @@ export type ApplicantAdminRow = {
   source: string | null;
   campaign: string | null;
   submitted_at: number;
+  retention_expires_at: number | null;
+  deletion_requested_at: number | null;
+  deletion_requested_by: string | null;
   updated_at: number;
   duplicate_count: number;
 };
@@ -120,11 +124,14 @@ export type ApplicantListFilters = {
   sort?: string;
   ids?: string[];
   limit?: number;
+  includeDeletionPending?: boolean;
 };
 
 export async function listApplicants(filters: ApplicantListFilters): Promise<ApplicantAdminRow[]> {
   await ensureDatabase();
-  const conditions: string[] = [];
+  const conditions: string[] = filters.includeDeletionPending
+    ? []
+    : ["a.deletion_requested_at IS NULL"];
   const bindings: unknown[] = [];
 
   const q = filters.q?.trim().slice(0, 160);

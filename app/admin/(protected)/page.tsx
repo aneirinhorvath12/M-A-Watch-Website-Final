@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { PageHeader, Panel, StatCard, StatusBadge, adminStyles as styles } from "@/components/admin/AdminUI";
 import { requireAdmin } from "@/lib/admin-auth";
-import { database } from "@/lib/platform";
+import { database, safeJson } from "@/lib/platform";
 import { formatAdminDate, titleCaseStatus } from "@/lib/admin-data";
+import { currentRecruitmentReadiness } from "@/lib/recruitment-runtime";
 
 export const dynamic = "force-dynamic";
 
@@ -33,9 +34,9 @@ export default async function AdminDashboardPage({
   const [review, attention, newApplicants, scheduled, applicationSettings, publications, activity, statusCounts, jobs] = await Promise.all([
     database().prepare("SELECT COUNT(*) AS count FROM publications WHERE status = 'review'").first<CountRow>(),
     database().prepare("SELECT COUNT(*) AS count FROM publications WHERE status = 'parse_failed' OR parse_warnings != '[]'").first<CountRow>(),
-    database().prepare("SELECT COUNT(*) AS count FROM applicants WHERE status = 'new'").first<CountRow>(),
+    database().prepare("SELECT COUNT(*) AS count FROM applicants WHERE status = 'new' AND deletion_requested_at IS NULL").first<CountRow>(),
     database().prepare("SELECT COUNT(*) AS count FROM publications WHERE status = 'scheduled'").first<CountRow>(),
-    database().prepare("SELECT open FROM application_settings WHERE id = 1").first<{ open: number }>(),
+    database().prepare("SELECT open, notification_recipients, privacy_policy_version, retention_days FROM application_settings WHERE id = 1").first<{ open: number; notification_recipients: string; privacy_policy_version: string; retention_days: number | null }>(),
     database().prepare(
       `SELECT id, title, type, status, updated_at FROM publications
        WHERE status IN ('review', 'scheduled', 'parse_failed', 'published')
@@ -47,14 +48,23 @@ export default async function AdminDashboardPage({
        WHERE audit.actor_id = ? OR audit.entity_type IN ('publication', 'applicant', 'application_settings')
        ORDER BY audit.created_at DESC LIMIT 8`,
     ).bind(actor.id).all<AuditRow>(),
-    database().prepare("SELECT status, COUNT(*) AS count FROM applicants GROUP BY status ORDER BY status").all<{ status: string; count: number }>(),
+    database().prepare("SELECT status, COUNT(*) AS count FROM applicants WHERE deletion_requested_at IS NULL GROUP BY status ORDER BY status").all<{ status: string; count: number }>(),
     database().prepare(
       `SELECT id, type, status, attempts, error, updated_at FROM background_jobs
-       WHERE type IN ('email', 'file_scan', 'publication_parse')
+       WHERE type IN ('email', 'file_scan', 'publication_parse', 'applicant_delete')
        ORDER BY CASE status WHEN 'failed' THEN 0 WHEN 'running' THEN 1 WHEN 'queued' THEN 2 ELSE 3 END,
                 updated_at DESC LIMIT 8`,
     ).all<JobRow>(),
   ]);
+  const recruitmentReadiness = currentRecruitmentReadiness({
+    retentionDays: applicationSettings?.retention_days ?? null,
+    privacyPolicyVersion: applicationSettings?.privacy_policy_version ?? "",
+    notificationRecipients: safeJson<string[]>(
+      applicationSettings?.notification_recipients,
+      [],
+    ),
+  });
+  const applicationsOpen = Boolean(applicationSettings?.open) && recruitmentReadiness.ready;
 
   return (
     <>
@@ -96,7 +106,7 @@ export default async function AdminDashboardPage({
         </Panel>
 
         <div>
-          <Panel title="Applications" meta={<StatusBadge value={applicationSettings?.open ? "Open" : "Closed"} />}>
+          <Panel title="Applications" meta={<StatusBadge value={applicationsOpen ? "Open" : applicationSettings?.open ? "Blocked" : "Closed"} />}>
             <div className={styles.panelBody}>
               {statusCounts.results.length ? (
                 <dl className={styles.detailList}>
@@ -136,7 +146,7 @@ export default async function AdminDashboardPage({
         ) : <div className={styles.empty}><h2 className={styles.emptyTitle}>No activity yet</h2><p className={styles.emptyText}>Important changes will be recorded here automatically.</p></div>}
       </Panel>
 
-      <Panel title="Integration queue" meta="Email, scanning and parser work">
+      <Panel title="Background work" meta="Email, scanning, parser and deletion">
         {jobs.results.length ? (
           <div className={styles.tableWrap}>
             <table className={styles.table}>
@@ -144,7 +154,7 @@ export default async function AdminDashboardPage({
               <tbody>{jobs.results.map((job) => <tr key={job.id}><td>{titleCaseStatus(job.type)}</td><td><StatusBadge value={titleCaseStatus(job.status)} /></td><td>{job.attempts}</td><td>{formatAdminDate(job.updated_at, true)}</td><td>{job.error ?? (job.status === "queued" ? "Queued; may be awaiting provider setup." : "—")}</td></tr>)}</tbody>
             </table>
           </div>
-        ) : <div className={styles.empty}><h2 className={styles.emptyTitle}>The queue is empty</h2><p className={styles.emptyText}>External delivery, scanning and parser work will appear here. Provider setup is still required before queued integrations can run.</p></div>}
+        ) : <div className={styles.empty}><h2 className={styles.emptyTitle}>The queue is empty</h2><p className={styles.emptyText}>External delivery, scanning, parser work and applicant deletion will appear here. Provider-backed jobs wait safely until their integration is configured.</p></div>}
       </Panel>
     </>
   );

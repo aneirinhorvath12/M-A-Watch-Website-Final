@@ -109,18 +109,32 @@ test("database readiness requires the migration-owned security fields", () => {
     "admin_users",
     "publications",
     "publication_revisions",
+    "applicant_notes",
+    "applicant_status_history",
+    "team_members",
+    "content_entries",
     "rate_limits",
     "audit_log",
     "background_jobs",
-  ].map((name) => ({ name, sql: `CREATE TABLE ${name} (id TEXT)` }));
+  ].map((name) => ({
+    name,
+    sql:
+      name === "background_jobs"
+        ? "CREATE TABLE background_jobs (id TEXT, claim_token TEXT)"
+        : `CREATE TABLE ${name} (id TEXT)`,
+  }));
   definitions.push(
     {
+      name: "analytics_daily",
+      sql: "CREATE TABLE analytics_daily (day TEXT, event TEXT, dimension_name TEXT, dimension_value TEXT, count INTEGER, PRIMARY KEY (day, event, dimension_name, dimension_value))",
+    },
+    {
       name: "applicants",
-      sql: "CREATE TABLE applicants (id TEXT, submission_key TEXT NOT NULL)",
+      sql: "CREATE TABLE applicants (id TEXT, submission_key TEXT NOT NULL, retention_expires_at INTEGER, deletion_requested_at INTEGER)",
     },
     {
       name: "application_settings",
-      sql: "CREATE TABLE application_settings (id INTEGER, open INTEGER DEFAULT false)",
+      sql: "CREATE TABLE application_settings (id INTEGER, open INTEGER DEFAULT false, retention_days INTEGER)",
     },
   );
   assert.equal(hasExpectedSchema(definitions), true);
@@ -129,6 +143,28 @@ test("database readiness requires the migration-owned security fields", () => {
       definitions.map((definition) =>
         definition.name === "applicants"
           ? { ...definition, sql: "CREATE TABLE applicants (id TEXT)" }
+          : definition,
+      ),
+    ),
+    false,
+  );
+  assert.equal(
+    hasExpectedSchema(
+      definitions.filter((definition) => definition.name !== "analytics_daily"),
+    ),
+    false,
+  );
+  assert.equal(
+    hasExpectedSchema(
+      definitions.filter((definition) => definition.name !== "content_entries"),
+    ),
+    false,
+  );
+  assert.equal(
+    hasExpectedSchema(
+      definitions.map((definition) =>
+        definition.name === "background_jobs"
+          ? { ...definition, sql: "CREATE TABLE background_jobs (id TEXT)" }
           : definition,
       ),
     ),

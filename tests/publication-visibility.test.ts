@@ -6,10 +6,19 @@ import {
   getPublishedPublications,
   searchPublishedPublications,
 } from "../lib/publications/service";
+import { resolvePublicationContentMode } from "../lib/publications/content-mode";
 import {
   canAccessDraftPreview,
   getPublicationForDraftPreview,
 } from "../lib/publications/preview";
+
+test("publication content is managed and fail-closed unless demo mode is explicit", () => {
+  assert.equal(resolvePublicationContentMode(undefined), "managed");
+  assert.equal(resolvePublicationContentMode(""), "managed");
+  assert.equal(resolvePublicationContentMode("production"), "managed");
+  assert.equal(resolvePublicationContentMode("demo"), "demo");
+  assert.equal(resolvePublicationContentMode(" DEMO "), "demo");
+});
 
 test("public helpers return only enabled, published records", () => {
   const publications = getPublishedPublications();

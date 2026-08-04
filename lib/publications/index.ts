@@ -1,5 +1,6 @@
 export * from "./service";
 export * from "./live";
+export * from "./content-mode";
 export type {
   ArticleBlock,
   ArticlePublication,

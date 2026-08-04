@@ -37,6 +37,7 @@ export const representativeReportFixtures: readonly ParserFixture[] = [
       "link",
       "image",
       "caption",
+      "table",
       "references",
     ],
     editorialNotes: ["Require human-written alternative text for extracted deal graphics."],
@@ -66,7 +67,7 @@ export const representativeReportFixtures: readonly ParserFixture[] = [
     publicPath: "/sample-reports/camsif-ma-watch.pdf",
     pageCount: 9,
     pageSize: "US Letter",
-    expectedElements: ["heading", "paragraph", "image", "caption", "references"],
+    expectedElements: ["heading", "paragraph", "image", "caption", "table", "references"],
     editorialNotes: ["Verify non-A4 geometry without changing logical reading order."],
   },
   {

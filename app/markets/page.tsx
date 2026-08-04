@@ -10,7 +10,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Markets | M&A Watch",
+  title: "Markets",
   description:
     "Browse M&A Watch Markets briefings on the macro themes and asset-class movements shaping the deal environment.",
   alternates: { canonical: "/markets" },

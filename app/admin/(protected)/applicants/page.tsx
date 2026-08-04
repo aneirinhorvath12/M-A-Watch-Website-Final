@@ -18,7 +18,8 @@ export default async function ApplicantsPage({
     q: one(params.q), status: one(params.status), division: one(params.division),
     from: one(params.from), to: one(params.to), sort: one(params.sort) || "newest", limit: 100,
   };
-  const applicants = await listApplicants(filters);
+  const applicants = await listApplicants({ ...filters, includeDeletionPending: true });
+  const pendingDeletionCount = applicants.filter((item) => item.deletion_requested_at).length;
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) if (typeof value === "string" && value) query.set(key, value);
 
@@ -27,9 +28,10 @@ export default async function ApplicantsPage({
       <PageHeader
         eyebrow="Recruitment"
         title="Applicants"
-        description="Review applications, record internal decisions and export only the current filtered data. Status changes do not send emails in this release."
+        description="Review applications, record internal decisions and export only the current filtered data. Records pending deletion remain visible here but are excluded from exports."
         actions={<a className={styles.buttonSecondary} href={`/api/admin/applicants/export?${query.toString()}`}>Export filtered CSV</a>}
       />
+      {pendingDeletionCount ? <div className={styles.noticeWarning}><strong>{pendingDeletionCount} applicant record{pendingDeletionCount === 1 ? " is" : "s are"} pending permanent deletion.</strong> Open a record to review its state; failed deletion jobs also appear on the operations dashboard.</div> : null}
       <form className={styles.filters} method="get" aria-label="Filter applicants">
         <div className={styles.fieldHalf}><label className={styles.label} htmlFor="applicant-search">Search</label><input className={styles.input} id="applicant-search" name="q" defaultValue={filters.q} placeholder="Name, university or email" /></div>
         <div className={styles.fieldQuarter}><label className={styles.label} htmlFor="applicant-status">Status</label><select className={styles.select} id="applicant-status" name="status" defaultValue={filters.status}><option value="">All statuses</option>{APPLICANT_STATUSES.map((item) => <option key={item} value={item}>{titleCaseStatus(item)}</option>)}</select></div>
@@ -51,7 +53,7 @@ export default async function ApplicantsPage({
                     <td><Link className={styles.primaryCell} href={`/admin/applicants/${item.id}`}>{item.name}</Link><span className={styles.secondaryCell}>{item.email}</span></td>
                     <td>{item.university}</td>
                     <td>{titleCaseStatus(item.division)}</td>
-                    <td><StatusBadge value={titleCaseStatus(item.status)} /></td>
+                    <td><StatusBadge value={item.deletion_requested_at ? "Deletion queued" : titleCaseStatus(item.status)} /></td>
                     <td>{formatAdminDate(item.submitted_at, true)}</td>
                     <td>{item.duplicate_count > 1 ? <StatusBadge value="Possible duplicate" /> : "No match"}</td>
                   </tr>

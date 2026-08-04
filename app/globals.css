@@ -494,6 +494,25 @@ input[type="file"] {
   font-weight: 650;
 }
 
+.site-footer__social {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  padding: 0;
+  margin: 1.4rem 0 0;
+  list-style: none;
+}
+
+.site-footer__social a {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.78rem;
+  font-weight: 650;
+  text-underline-offset: 0.25rem;
+}
+
+.site-footer__social a:hover,
+.site-footer__social a:focus-visible { color: var(--color-white); }
+
 .site-footer__links {
   display: grid;
   grid-template-columns: repeat(3, minmax(8rem, 1fr));
@@ -884,6 +903,10 @@ input[type="file"] {
   text-decoration: none;
 }
 
+.featured-card__cover {
+  object-fit: cover;
+}
+
 .featured-card--legal .featured-card__visual { background: var(--color-teal); color: var(--color-white); }
 .featured-card--markets .featured-card__visual { background: var(--color-midnight); color: var(--color-white); }
 
@@ -1246,6 +1269,19 @@ input[type="file"] {
 .team-card__portrait--charcoal { background: var(--color-charcoal); }
 .team-card__portrait--light { background: var(--color-light-blue); color: var(--color-ink); }
 
+.team-card__portrait--photo {
+  background: var(--color-light-blue);
+}
+
+.team-card__portrait--photo::before,
+.team-card__portrait--photo::after {
+  content: none;
+}
+
+.team-card__photo {
+  object-fit: cover;
+}
+
 .team-card__portrait::before,
 .team-card__portrait::after {
   position: absolute;
@@ -1328,6 +1364,104 @@ input[type="file"] {
 }
 
 /* Info */
+.info-managed { background: var(--color-white); }
+
+.info-managed__flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 0.62fr);
+  gap: 0 clamp(3rem, 9vw, 9rem);
+}
+
+.info-managed__heading {
+  grid-column: 1;
+  max-width: 15ch;
+  margin: clamp(4rem, 8vw, 7rem) 0 2rem;
+  font-family: var(--font-display);
+  font-size: clamp(2.8rem, 5.5vw, 5.5rem);
+  font-weight: 500;
+  letter-spacing: -0.05em;
+  line-height: 0.98;
+}
+
+.info-managed__flow > .info-managed__heading:first-child { margin-top: 0; }
+
+.info-managed__subheading {
+  grid-column: 1;
+  max-width: 24ch;
+  margin: 2.5rem 0 1rem;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 3.5vw, 3.5rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.info-managed__paragraph {
+  grid-column: 2;
+  margin: 0 0 1.5rem;
+  color: var(--color-dark-grey);
+  font-size: 1.02rem;
+  line-height: 1.75;
+}
+
+.info-managed__heading + .info-managed__paragraph,
+.info-managed__subheading + .info-managed__paragraph {
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.info-managed__figure {
+  grid-column: 1 / -1;
+  margin: clamp(3rem, 7vw, 6rem) 0;
+}
+
+.info-managed__image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 46rem;
+  object-fit: cover;
+  background: var(--color-light-blue);
+}
+
+.info-managed__figure figcaption {
+  margin-top: 0.7rem;
+  color: var(--color-grey);
+  font-size: 0.76rem;
+}
+
+.info-managed__link {
+  grid-column: 2;
+  margin: 0.5rem 0 3rem;
+}
+
+.info-managed__cta {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 1.1fr 0.9fr;
+  align-items: end;
+  gap: clamp(3rem, 9vw, 9rem);
+  margin-top: clamp(4rem, 9vw, 8rem);
+  padding: clamp(2rem, 5vw, 4.5rem);
+  background: var(--color-sky);
+}
+
+.info-managed__cta h2 {
+  max-width: 11ch;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(2.8rem, 5.6vw, 5.6rem);
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  line-height: 0.92;
+}
+
+.info-managed__cta > div:last-child > p {
+  max-width: 34rem;
+  margin: 0 0 2rem;
+  color: #283c4c;
+}
+
 .story-section { background: var(--color-white); }
 
 .story-section__grid {
@@ -2013,6 +2147,13 @@ input[type="file"] {
 
   .story-section__grid { grid-template-columns: 1fr; gap: 1.5rem; }
   .story-section__copy { grid-column: auto; }
+  .info-managed__flow { grid-template-columns: 1fr; }
+  .info-managed__heading,
+  .info-managed__subheading,
+  .info-managed__paragraph,
+  .info-managed__link { grid-column: 1; }
+  .info-managed__paragraph { max-width: 46rem; }
+  .info-managed__cta { grid-template-columns: 1fr; align-items: start; }
   .mission-grid { grid-template-columns: 1fr; }
   .mission-grid article { min-height: 20rem; }
   .values-grid { grid-template-columns: 1fr; }

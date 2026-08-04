@@ -10,6 +10,11 @@ export type ParseWarningCode =
   | "FILE_TOO_LARGE"
   | "EMPTY_FILE"
   | "INVALID_PDF_SIGNATURE"
+  | "INVALID_PAGE_COUNT"
+  | "NO_USABLE_CONTENT"
+  | "INVALID_BLOCK_COORDINATES"
+  | "BLOCK_ID_MISMATCH"
+  | "INVALID_BLOCK_SHAPE"
   | "MISSING_DOCUMENT_TITLE"
   | "UNCERTAIN_READING_ORDER"
   | "LOW_CONFIDENCE_BLOCK"
@@ -36,21 +41,25 @@ export interface ParserInput {
   filename: string;
   mimeType: string;
   size: number;
-  /** First bytes are sufficient for signature validation in the prototype. */
+  /** First bytes are sufficient, but must be supplied for signature validation. */
   bytes?: Uint8Array;
   requestedAt: string;
 }
 
 export interface ParsedBlock {
   id: string;
+  /** One-based page number in the source PDF. */
   sourcePage: number;
+  /** Zero-based position among extracted structures on that page. */
   orderOnPage: number;
   confidence: number;
   block: ArticleBlock;
 }
 
 export interface UnsupportedStructure {
+  /** One-based page number in the source PDF. */
   sourcePage: number;
+  /** Zero-based position among extracted structures on that page. */
   orderOnPage: number;
   description: string;
 }
@@ -100,4 +109,31 @@ export interface ParserFixture {
     | "page-spanning-text"
   )[];
   editorialNotes: readonly string[];
+}
+
+export interface ParserFixtureGolden {
+  schemaVersion: "1.0";
+  fixtureId: string;
+  sourceSha256: string;
+  sourceByteLength: number;
+  /**
+   * Short, source-backed phrases that must survive extraction in this order.
+   * Comparison is case-, punctuation- and whitespace-insensitive.
+   */
+  orderedTextAnchors: readonly string[];
+  pageChecks: readonly {
+    id: string;
+    pages: readonly number[];
+    requiredElements: readonly (ParserFixture["expectedElements"][number])[];
+    manualReview: string;
+  }[];
+}
+
+export interface ParserFixtureAcceptance {
+  fixtureId: string;
+  automatedChecksPassed: boolean;
+  failures: readonly string[];
+  /** Checks that remain deliberately human-owned rather than guessed in code. */
+  manualChecks: readonly string[];
+  observedElements: readonly (ParserFixture["expectedElements"][number])[];
 }

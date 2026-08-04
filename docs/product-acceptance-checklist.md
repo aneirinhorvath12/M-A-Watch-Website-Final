@@ -1,5 +1,10 @@
 # M&A Watch MVP — Product Acceptance and Spec Traceability Checklist
 
+> Historical implementation review. This snapshot predates the final hardening
+> pass and is retained for traceability; its individual status cells are not a
+> current release verdict. Use `docs/release-readiness.md` for the current
+> evidence and launch gates.
+
 **Source specification:** `mna-watch-website-product-spec.md`, version 1.0, 4 August 2026  
 **Repository snapshot reviewed:** 4 August 2026, 15:42 BST  
 **Purpose:** Working acceptance register for implementation, product QA and launch sign-off.

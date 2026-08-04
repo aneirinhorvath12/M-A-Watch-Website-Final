@@ -22,20 +22,48 @@ function isIdentifier(value: unknown): value is string {
 }
 
 export function isSafeArticleUrl(value: string): boolean {
+  if (
+    value.trim() !== value ||
+    /[\u0000-\u001f\u007f\\]/.test(value)
+  ) {
+    return false;
+  }
   if (value.startsWith("#")) return true;
-  if (value.startsWith("/") && !value.startsWith("//")) return true;
+  if (value.startsWith("/")) {
+    if (value.startsWith("//")) return false;
+    try {
+      const url = new URL(value, "https://mawatch.invalid");
+      return (
+        url.origin === "https://mawatch.invalid" &&
+        !url.username &&
+        !url.password
+      );
+    } catch {
+      return false;
+    }
+  }
   try {
     const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "mailto:";
+    return (
+      (url.protocol === "https:" && !url.username && !url.password) ||
+      url.protocol === "mailto:"
+    );
   } catch {
     return false;
   }
 }
 
 function isSafeArticleImageUrl(value: string): boolean {
-  if (value.startsWith("/") && !value.startsWith("//")) return true;
+  if (!value.startsWith("/") || value.startsWith("//") || /[\u0000-\u001f\\]/.test(value)) return false;
   try {
-    return new URL(value).protocol === "https:";
+    const url = new URL(value, "https://mawatch.invalid");
+    const decoded = decodeURIComponent(url.pathname);
+    return (
+      url.origin === "https://mawatch.invalid" &&
+      !url.hash &&
+      !decoded.split("/").some((segment) => segment === "." || segment === "..") &&
+      /\.(?:avif|jpe?g|png|webp)$/i.test(decoded)
+    );
   } catch {
     return false;
   }
@@ -104,10 +132,11 @@ function isArticleBlock(value: unknown): value is ArticleBlock {
         isOptionalString(value.caption, 10_000) &&
         Number.isInteger(value.width) &&
         Number(value.width) > 0 &&
-        Number(value.width) <= 12_000 &&
+        Number(value.width) <= 8_192 &&
         Number.isInteger(value.height) &&
         Number(value.height) > 0 &&
-        Number(value.height) <= 12_000
+        Number(value.height) <= 8_192 &&
+        Number(value.width) * Number(value.height) <= 24_000_000
       );
     case "table": {
       const headers = value.headers;
@@ -145,9 +174,9 @@ function isArticleBlock(value: unknown): value is ArticleBlock {
 }
 
 export function validateArticleBlocks(value: unknown): value is ArticleBlock[] {
-  return (
-    Array.isArray(value) &&
-    value.length <= MAX_BLOCKS &&
-    value.every(isArticleBlock)
-  );
+  if (!Array.isArray(value) || value.length > MAX_BLOCKS || !value.every(isArticleBlock)) {
+    return false;
+  }
+  const ids = new Set(value.map((block) => block.id));
+  return ids.size === value.length;
 }

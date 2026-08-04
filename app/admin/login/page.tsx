@@ -12,7 +12,7 @@ import styles from "@/components/admin/admin.module.css";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Admin sign in | M&A Watch",
+  title: "Admin sign in",
   robots: { index: false, follow: false },
 };
 

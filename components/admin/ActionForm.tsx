@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 import styles from "./admin.module.css";
 
 type ActionFormProps = {
@@ -42,6 +42,7 @@ export function ActionForm({
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const statusId = useId();
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -85,17 +86,19 @@ export function ActionForm({
   }
 
   return (
-    <form className={className} onSubmit={submit}>
+    <form aria-busy={pending} aria-describedby={statusId} className={className} onSubmit={submit}>
       {children}
       <button type="submit" className={buttonClass(buttonTone)} disabled={pending}>
         {pending ? pendingLabel : submitLabel}
       </button>
       <div
         className={`${styles.formStatus} ${error ? styles.formStatusError : ""}`}
+        id={statusId}
         role="status"
+        aria-atomic="true"
         aria-live="polite"
       >
-        {error || message}
+        {error || message || (pending ? pendingLabel : "")}
       </div>
     </form>
   );

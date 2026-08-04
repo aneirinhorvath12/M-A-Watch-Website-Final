@@ -27,7 +27,10 @@ async function verifyMigratedSchemaAndSeed(): Promise<void> {
        WHERE type = 'table'
          AND name IN (
            'admin_users', 'publications', 'publication_revisions', 'applicants',
-           'rate_limits', 'application_settings', 'audit_log', 'background_jobs'
+           'applicant_notes', 'applicant_status_history',
+           'team_members', 'content_entries', 'rate_limits',
+           'application_settings', 'audit_log', 'background_jobs',
+           'analytics_daily'
          )`,
     )
     .all<SchemaDefinition>();

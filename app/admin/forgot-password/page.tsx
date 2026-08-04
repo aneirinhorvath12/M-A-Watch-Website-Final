@@ -4,7 +4,7 @@ import { chatGPTSignInPath } from "@/app/chatgpt-auth";
 import styles from "@/components/admin/admin.module.css";
 
 export const metadata: Metadata = {
-  title: "Recover admin access | M&A Watch",
+  title: "Recover admin access",
   robots: { index: false, follow: false },
 };
 

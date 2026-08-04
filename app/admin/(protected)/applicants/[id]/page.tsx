@@ -6,6 +6,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { APPLICANT_STATUSES, formatAdminDate, getApplicantAdmin, titleCaseStatus } from "@/lib/admin-data";
 import { writeAudit } from "@/lib/audit";
 import { database, privateFiles } from "@/lib/platform";
+import { applicantDeletionJobId } from "@/lib/recruitment-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export default async function ApplicantDetailPage({ params }: { params: Promise<
   const applicant = await getApplicantAdmin(id);
   if (!applicant) notFound();
   const cvRow = await database().prepare("SELECT cv_key FROM applicants WHERE id = ?").bind(id).first<{ cv_key: string }>();
-  const [notes, history, cvObject, scanJob] = await Promise.all([
+  const [notes, history, cvObject, scanJob, deletionJob] = await Promise.all([
     database().prepare(
       `SELECT notes.id, notes.body, notes.created_at, users.name AS actor_name, users.status AS actor_status
        FROM applicant_notes notes LEFT JOIN admin_users users ON users.id = notes.created_by
@@ -41,6 +42,9 @@ export default async function ApplicantDetailPage({ params }: { params: Promise<
        WHERE type = 'file_scan' AND json_extract(payload, '$.applicationId') = ?
        ORDER BY created_at DESC LIMIT 1`,
     ).bind(id).first<{ status: string; error: string | null }>(),
+    database().prepare(
+      "SELECT status, error FROM background_jobs WHERE id = ? LIMIT 1",
+    ).bind(applicantDeletionJobId(id)).first<{ status: string; error: string | null }>(),
   ]);
   const scanStatus = !cvObject
     ? "missing"
@@ -49,6 +53,7 @@ export default async function ApplicantDetailPage({ params }: { params: Promise<
       : scanJob?.status === "failed" || cvObject.customMetadata?.scanStatus === "rejected"
         ? "failed"
         : scanJob?.status ?? "queued";
+  const deletionQueued = Boolean(applicant.deletion_requested_at);
   await writeAudit({ actorId: actor.id, action: "applicant.record_viewed", entityType: "applicant", entityId: id });
 
   return (
@@ -57,8 +62,9 @@ export default async function ApplicantDetailPage({ params }: { params: Promise<
         eyebrow={`${titleCaseStatus(applicant.division)} application`}
         title={applicant.name}
         description={`Submitted ${formatAdminDate(applicant.submitted_at, true)}. Applicant status changes never trigger an email automatically.`}
-        actions={<><StatusBadge value={titleCaseStatus(applicant.status)} /><Link className={styles.buttonSecondary} href="/admin/applicants">Back to list</Link></>}
+        actions={<><StatusBadge value={deletionQueued ? "Deletion queued" : titleCaseStatus(applicant.status)} /><Link className={styles.buttonSecondary} href="/admin/applicants">Back to list</Link></>}
       />
+      {deletionQueued ? <div className={deletionJob?.status === "failed" ? styles.noticeError : styles.noticeWarning}><strong>{deletionJob?.status === "failed" ? "Permanent deletion needs attention." : "Permanent deletion is queued."}</strong> The CV cannot be downloaded and this record can no longer be edited or exported. {deletionJob?.error ?? (deletionJob ? "The background deletion will remove it." : "The deletion job is missing and must be requeued by a Super User.")}</div> : null}
       {applicant.duplicate_count > 1 ? <div className={styles.noticeWarning}><strong>Possible duplicate:</strong> {applicant.duplicate_count} applications use this email address. Review them individually; no automatic decision has been made.</div> : null}
       <div className={styles.gridTwo}>
         <div>
@@ -70,6 +76,7 @@ export default async function ApplicantDetailPage({ params }: { params: Promise<
                 <div className={styles.detailItem}><dt>Division</dt><dd>{titleCaseStatus(applicant.division)}</dd></div>
                 <div className={styles.detailItem}><dt>Submitted</dt><dd>{formatAdminDate(applicant.submitted_at, true)}</dd></div>
                 <div className={styles.detailItem}><dt>Privacy acknowledged</dt><dd>{formatAdminDate(applicant.privacy_acknowledged_at, true)}</dd></div>
+                <div className={styles.detailItem}><dt>Retention date</dt><dd>{formatAdminDate(applicant.retention_expires_at, true)}</dd></div>
                 <div className={styles.detailItem}><dt>Attribution</dt><dd>{[applicant.source, applicant.campaign].filter(Boolean).join(" · ") || "Direct / not supplied"}</dd></div>
               </dl>
             </div>
@@ -77,11 +84,11 @@ export default async function ApplicantDetailPage({ params }: { params: Promise<
 
           <Panel title="Internal notes" meta={`${notes.results.length} note${notes.results.length === 1 ? "" : "s"}`}>
             <div className={styles.panelBody}>
-              <ActionForm action={`/api/admin/applicants/${id}/notes`} submitLabel="Add internal note">
+              {!deletionQueued ? <ActionForm action={`/api/admin/applicants/${id}/notes`} submitLabel="Add internal note">
                 <label className={styles.label} htmlFor="note-body">New note</label>
                 <textarea className={styles.textarea} id="note-body" name="body" maxLength={4000} required />
                 <span className={styles.hint}>Notes are visible only to administrative users and are included in the audit trail.</span>
-              </ActionForm>
+              </ActionForm> : <p className={styles.noteBody}>New notes are disabled while deletion is pending.</p>}
               <div className={styles.divider} />
               {notes.results.length ? <ul className={styles.timeline}>{notes.results.map((note) => <li className={styles.timelineItem} key={note.id}><div className={styles.timelineTitle}>{note.actor_name ?? "Former or system user"}{note.actor_status === "disabled" ? " (disabled)" : ""}</div><div className={styles.timelineMeta}>{formatAdminDate(note.created_at, true)}</div><p className={styles.noteBody}>{note.body}</p></li>)}</ul> : <p className={styles.emptyText}>No internal notes have been added.</p>}
             </div>
@@ -91,12 +98,12 @@ export default async function ApplicantDetailPage({ params }: { params: Promise<
         <div>
           <Panel title="Review status" meta="No email is sent">
             <div className={styles.panelBody}>
-              <ActionForm action={`/api/admin/applicants/${id}/status`} method="PATCH" submitLabel="Update status" confirmation="Record this applicant status change? No email will be sent.">
+              {!deletionQueued ? <ActionForm action={`/api/admin/applicants/${id}/status`} method="PATCH" submitLabel="Update status" confirmation="Record this applicant status change? No email will be sent.">
                 <label className={styles.label} htmlFor="status">Applicant status</label>
                 <select className={styles.select} id="status" name="status" defaultValue={applicant.status}>
                   {APPLICANT_STATUSES.map((status) => <option key={status} value={status}>{titleCaseStatus(status)}</option>)}
                 </select>
-              </ActionForm>
+              </ActionForm> : <p className={styles.noteBody}>Status changes are disabled while deletion is pending.</p>}
             </div>
           </Panel>
 
@@ -104,10 +111,29 @@ export default async function ApplicantDetailPage({ params }: { params: Promise<
             <div className={styles.panelBody}>
               <p className={styles.noteBody}>{applicant.cv_filename}</p>
               <p className={styles.hint}>Security scan: <strong>{titleCaseStatus(scanStatus)}</strong>. Downloads are authenticated, private, non-cacheable and audited.</p>
-              {scanStatus === "succeeded" ? <a className={styles.buttonSecondary} href={`/api/files/applicants/${id}/cv`}>Download CV</a> : <button className={styles.buttonSecondary} type="button" disabled>{scanStatus === "failed" ? "CV scan failed" : "CV quarantined"}</button>}
+              {!deletionQueued && scanStatus === "succeeded" ? <a className={styles.buttonSecondary} href={`/api/files/applicants/${id}/cv`}>Download CV</a> : <button className={styles.buttonSecondary} type="button" disabled>{deletionQueued ? "CV deletion queued" : scanStatus === "failed" ? "CV scan failed" : "CV quarantined"}</button>}
               {scanJob?.error ? <p className={styles.noteBody}>Scan error: {scanJob.error}</p> : null}
             </div>
           </Panel>
+
+          {actor.role === "super_user" && (!deletionQueued || deletionJob?.status === "failed" || !deletionJob) ? (
+            <Panel title={deletionQueued ? "Retry permanent deletion" : "Permanent deletion"} meta="Super User only">
+              <div className={styles.panelBody}>
+                <p className={styles.noteBody}>Queues removal of the applicant record, notes, status history, queued emails and private CV. Only non-identifying audit evidence is retained.</p>
+                <ActionForm action={`/api/admin/applicants/${id}`} method="DELETE" submitLabel={deletionQueued ? "Requeue permanent deletion" : "Queue permanent deletion"} pendingLabel="Queuing…" buttonTone="danger" confirmation="Permanently delete this applicant and their private CV? This cannot be undone." redirectTo="/admin/applicants">
+                  <label className={styles.label} htmlFor="deletion-reason">Approved reason</label>
+                  <select className={styles.select} id="deletion-reason" name="reason" required>
+                    <option value="privacy_request">Verified privacy request</option>
+                    <option value="retention_expired">Recorded retention period expired</option>
+                    <option value="administrative_request">Approved administrative request</option>
+                  </select>
+                  <label className={styles.label} htmlFor="deletion-confirmation">Type the application ID to confirm</label>
+                  <input className={styles.input} id="deletion-confirmation" name="confirmation" autoComplete="off" required />
+                  <span className={styles.hint}>{id}</span>
+                </ActionForm>
+              </div>
+            </Panel>
+          ) : null}
 
           <Panel title="Status history" meta={`${history.results.length} event${history.results.length === 1 ? "" : "s"}`}>
             <div className={styles.panelBody}>

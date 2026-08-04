@@ -1,52 +1,135 @@
 import { ensureDatabase } from "@/db/bootstrap";
-import { apiError, authorizeAdminRequest, readJsonObject, stringValue } from "@/lib/admin-api";
+import {
+  apiError,
+  authorizeAdminRequest,
+  readJsonObject,
+  stringValue,
+} from "@/lib/admin-api";
 import { writeAudit } from "@/lib/audit";
-import { database, safeJson } from "@/lib/platform";
+import { infoAssetKey, infoImageAssetIds } from "@/lib/managed-images";
+import { database, privateFiles, safeJson } from "@/lib/platform";
+import {
+  isManagedContentKey,
+  validateManagedContent,
+} from "@/lib/site-content";
 
-const ALLOWED_KEYS = new Set(["homepage.hero", "homepage.overview", "info.page", "site.contact"]);
+const MAX_REQUEST_BYTES = 64_000;
 
-function safeHref(value: unknown): string {
-  const href = stringValue(value, 500);
-  if (!href) return "";
-  if (href.startsWith("/") && !href.startsWith("//")) return href;
-  try { const url = new URL(href); return url.protocol === "https:" || url.protocol === "mailto:" ? href : ""; } catch { return ""; }
-}
-
-export async function PATCH(request: Request, { params }: { params: Promise<{ key: string }> }) {
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ key: string }> },
+) {
   const auth = await authorizeAdminRequest(request, { mutation: true });
   if (!auth.ok) return auth.response;
   const { key } = await params;
-  if (!ALLOWED_KEYS.has(key)) return apiError("This content section is not editable.", 404);
+  if (!isManagedContentKey(key)) {
+    return apiError("This content section is not editable.", 404);
+  }
+
+  const declaredLength = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
+    return apiError("The content update is too large.", 413);
+  }
   const payload = await readJsonObject(request);
   if (!payload) return apiError("The content update could not be read.", 400);
   const intent = stringValue(payload.intent, 20) || "save";
-  if (intent !== "save" && intent !== "publish") return apiError("Unsupported content action.", 400);
+  if (intent !== "save" && intent !== "publish") {
+    return apiError("Unsupported content action.", 400);
+  }
+
   await ensureDatabase();
-  const current = await database().prepare("SELECT draft_value, published_value FROM content_entries WHERE key = ?").bind(key).first<{ draft_value: string; published_value: string }>();
-  const draft = safeJson<{ title?: string; body?: string; ctaLabel?: string; ctaHref?: string }>(current?.draft_value, {});
-  const next = {
-    title: payload.title === undefined ? draft.title ?? "" : stringValue(payload.title, 180),
-    body: payload.body === undefined ? draft.body ?? "" : stringValue(payload.body, 8_000),
-    ctaLabel: payload.ctaLabel === undefined ? draft.ctaLabel ?? "" : stringValue(payload.ctaLabel, 80),
-    ctaHref: payload.ctaHref === undefined ? draft.ctaHref ?? "" : safeHref(payload.ctaHref),
-  };
-  if (!next.title) return apiError("Add a section title.", 422);
-  if (stringValue(payload.ctaHref, 500) && !next.ctaHref) return apiError("The call-to-action link must be a site path, HTTPS URL or email link.", 422);
+  const current = await database()
+    .prepare("SELECT draft_value, published_value FROM content_entries WHERE key = ?")
+    .bind(key)
+    .first<{ draft_value: string; published_value: string }>();
   const now = Date.now();
-  const json = JSON.stringify(next);
-  await database().prepare(
-    `INSERT INTO content_entries (key, draft_value, published_value, updated_by, updated_at, published_at)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET draft_value = excluded.draft_value,
-       published_value = CASE WHEN ? = 'publish' THEN excluded.draft_value ELSE content_entries.published_value END,
-       updated_by = excluded.updated_by, updated_at = excluded.updated_at,
-       published_at = CASE WHEN ? = 'publish' THEN excluded.published_at ELSE content_entries.published_at END`,
-  ).bind(key, json, intent === "publish" ? json : current?.published_value ?? "{}", auth.actor.id, now, intent === "publish" ? now : null, intent, intent).run();
+  let discardedInfoAssets = new Set<string>();
+
+  if (intent === "save") {
+    const validation = validateManagedContent(key, payload.value);
+    if (!validation.ok) return apiError(validation.error, 422);
+    const json = JSON.stringify(validation.value);
+    if (key === "info.page") {
+      const previousDraft = infoImageAssetIds(safeJson<unknown>(current?.draft_value, null));
+      const nextDraft = infoImageAssetIds(validation.value);
+      const published = infoImageAssetIds(safeJson<unknown>(current?.published_value, null));
+      discardedInfoAssets = new Set(
+        [...previousDraft].filter((assetId) => !nextDraft.has(assetId) && !published.has(assetId)),
+      );
+    }
+    await database()
+      .prepare(
+        `INSERT INTO content_entries
+         (key, draft_value, published_value, updated_by, updated_at, published_at)
+         VALUES (?, ?, ?, ?, ?, NULL)
+         ON CONFLICT(key) DO UPDATE SET
+           draft_value = excluded.draft_value,
+           updated_by = excluded.updated_by,
+           updated_at = excluded.updated_at`,
+      )
+      .bind(key, json, current?.published_value ?? "{}", auth.actor.id, now)
+      .run();
+  } else {
+    if (!current) return apiError("Save a draft before publishing this section.", 409);
+    const validation = validateManagedContent(
+      key,
+      safeJson<unknown>(current.draft_value, null),
+    );
+    if (!validation.ok) {
+      return apiError(`The saved draft cannot be published: ${validation.error}`, 422);
+    }
+    if (key === "info.page") {
+      const previousPublished = infoImageAssetIds(safeJson<unknown>(current.published_value, null));
+      const nextPublished = infoImageAssetIds(validation.value);
+      discardedInfoAssets = new Set(
+        [...previousPublished].filter((assetId) => !nextPublished.has(assetId)),
+      );
+    }
+    const result = await database()
+      .prepare(
+        `UPDATE content_entries
+         SET published_value = ?, updated_by = ?, updated_at = ?, published_at = ?
+         WHERE key = ?`,
+      )
+      .bind(JSON.stringify(validation.value), auth.actor.id, now, now, key)
+      .run();
+    if ((result.meta.changes ?? 0) !== 1) {
+      return apiError("The saved draft could not be published.", 409);
+    }
+  }
+
   await writeAudit({
     actorId: auth.actor.id,
     action: intent === "publish" ? "content.published" : "content.draft_saved",
     entityType: "content_entry",
     entityId: key,
+    metadata: { schema: "managed-content-v1" },
   });
-  return Response.json({ ok: true, message: intent === "publish" ? "Content published." : "Draft saved; public content is unchanged." });
+  if (key === "info.page" && discardedInfoAssets.size) {
+    const latest = await database()
+      .prepare("SELECT draft_value, published_value FROM content_entries WHERE key = 'info.page' LIMIT 1")
+      .first<{ draft_value: string; published_value: string }>();
+    const retained = new Set([
+      ...infoImageAssetIds(safeJson<unknown>(latest?.draft_value, null)),
+      ...infoImageAssetIds(safeJson<unknown>(latest?.published_value, null)),
+    ]);
+    await Promise.all([...discardedInfoAssets].map(async (assetId) => {
+      if (retained.has(assetId)) return;
+      const assetKey = infoAssetKey(assetId);
+      if (!assetKey) return;
+      try {
+        await privateFiles().delete(assetKey);
+      } catch {
+        // The asset is private and no longer referenced. A transient cleanup
+        // failure must not roll back an otherwise valid content publication.
+        console.error("Unable to clean up an unreferenced Info image.");
+      }
+    }));
+  }
+  return Response.json({
+    ok: true,
+    message: intent === "publish"
+      ? "Saved draft published."
+      : "Draft saved; public content is unchanged.",
+  });
 }

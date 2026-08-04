@@ -727,6 +727,71 @@
   white-space: pre-wrap;
 }
 
+.panelDescription {
+  max-width: 58rem;
+  margin: 0.35rem 0 0;
+  color: var(--admin-muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.contentFields {
+  display: grid;
+  gap: 1rem;
+}
+
+.contentCard {
+  border: 1px solid var(--admin-line);
+  border-radius: 0.5rem;
+  background: #fbfcfa;
+  overflow: hidden;
+}
+
+.contentCard .contentCard {
+  background: white;
+}
+
+.contentCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--admin-line);
+  background: #f4f6f3;
+  padding: 0.72rem 0.85rem;
+}
+
+.contentCardHeader strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.96rem;
+  font-weight: 600;
+}
+
+.contentCardBody {
+  padding: 0.9rem;
+}
+
+.contentActions {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
+  border: 1px solid var(--admin-line);
+  border-radius: 0.45rem;
+  background: rgb(255 255 255 / 0.96);
+  padding: 0.75rem;
+  box-shadow: 0 -0.5rem 1rem rgb(23 33 30 / 0.04);
+  backdrop-filter: blur(8px);
+}
+
+.contentActions .hint {
+  margin: 0 0 0 auto;
+}
+
 .codeValue {
   border-radius: 0.3rem;
   background: #eef1ef;
@@ -1001,6 +1066,9 @@
   .fieldQuarter { grid-column: 1 / -1; }
   .editorSaveState { width: 100%; margin-left: 0; }
   .addBlockBar .select { width: 100%; }
+  .contentCardHeader { align-items: flex-start; flex-direction: column; }
+  .contentActions { position: static; }
+  .contentActions .hint { width: 100%; margin-left: 0; }
 }
 
 @media (max-width: 480px) {

@@ -38,7 +38,7 @@ export default function PrivacyPage() {
         },
         {
           title: "Cookies and analytics",
-          content: <><p>Essential storage may be used to keep the service secure and functioning. Optional analytics will be configured to respect the website&apos;s applicable consent settings and will not capture CV contents or sensitive form values.</p><p>More detail will be published if optional cookies or similar technologies are enabled.</p></>,
+          content: <><p>Our first-party analytics uses no cookies and loads no third-party tracking script. It keeps daily aggregate counts for approved events such as public page views, report and PDF use, publication searches or filters, application page views, successful submissions and broad validation-failure categories.</p><p>Analytics does not store IP addresses, user-agent strings, referrers, raw URLs or search text, visitor or applicant identifiers, CV details, or any name, university, email address or other form value. Aggregate counters are deleted after 400 days. If optional cookies or another analytics service is proposed later, this notice and any required consent controls must be updated before it is enabled.</p></>,
         },
         {
           title: "Contact and updates",

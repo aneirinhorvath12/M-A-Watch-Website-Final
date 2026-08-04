@@ -1,6 +1,7 @@
 import {
   index,
   integer,
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -138,6 +139,11 @@ export const applicants = sqliteTable(
     source: text("source"),
     campaign: text("campaign"),
     submittedAt: integer("submitted_at").notNull(),
+    retentionExpiresAt: integer("retention_expires_at"),
+    deletionRequestedAt: integer("deletion_requested_at"),
+    deletionRequestedBy: text("deletion_requested_by").references(
+      () => adminUsers.id,
+    ),
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [
@@ -147,6 +153,10 @@ export const applicants = sqliteTable(
       table.status,
       table.division,
       table.submittedAt,
+    ),
+    index("idx_applicants_retention").on(
+      table.retentionExpiresAt,
+      table.deletionRequestedAt,
     ),
   ],
 );
@@ -229,6 +239,7 @@ export const applicationSettings = sqliteTable("application_settings", {
   closedMessage: text("closed_message").notNull().default(""),
   notificationRecipients: text("notification_recipients").notNull().default("[]"),
   privacyPolicyVersion: text("privacy_policy_version").notNull().default("2026-08-04"),
+  retentionDays: integer("retention_days"),
   updatedBy: text("updated_by").references(() => adminUsers.id),
   updatedAt: integer("updated_at").notNull(),
 });
@@ -262,9 +273,34 @@ export const backgroundJobs = sqliteTable(
     payload: text("payload").notNull().default("{}"),
     attempts: integer("attempts").notNull().default(0),
     error: text("error"),
+    claimToken: text("claim_token"),
     runAfter: integer("run_after").notNull(),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [index("idx_jobs_queue").on(table.status, table.runAfter)],
+);
+
+export const analyticsDaily = sqliteTable(
+  "analytics_daily",
+  {
+    day: text("day").notNull(),
+    event: text("event").notNull(),
+    dimensionName: text("dimension_name").notNull(),
+    dimensionValue: text("dimension_value").notNull(),
+    count: integer("count").notNull().default(0),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      name: "analytics_daily_pk",
+      columns: [
+        table.day,
+        table.event,
+        table.dimensionName,
+        table.dimensionValue,
+      ],
+    }),
+    index("idx_analytics_daily_event_day").on(table.event, table.day),
+  ],
 );

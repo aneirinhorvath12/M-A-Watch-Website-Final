@@ -50,7 +50,10 @@ export async function GET(request: Request) {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="mna-watch-applicants-${new Date().toISOString().slice(0, 10)}.csv"`,
       "Cache-Control": "private, no-store",
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+      "Cross-Origin-Resource-Policy": "same-origin",
       "X-Content-Type-Options": "nosniff",
+      "X-Download-Options": "noopen",
     },
   });
 }

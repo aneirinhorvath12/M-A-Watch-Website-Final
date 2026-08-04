@@ -11,6 +11,7 @@ const OPERATIONS: NavItem[] = [
   { href: "/admin/publications", label: "Publications", glyph: "PB" },
   { href: "/admin/applicants", label: "Applicants", glyph: "AP" },
   { href: "/admin/application-settings", label: "Applications", glyph: "AS" },
+  { href: "/admin/analytics", label: "Analytics", glyph: "AN" },
 ];
 
 const WEBSITE: NavItem[] = [

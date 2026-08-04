@@ -176,7 +176,7 @@ function BlockFields({ block, publicationId, onChange }: {
         <div className={styles.fieldWide}><label className={styles.label} htmlFor={`${block.id}-caption`}>Caption</label><input className={styles.input} id={`${block.id}-caption`} value={block.caption ?? ""} onChange={(event) => onChange({ ...block, caption: event.target.value })} /></div>
         <div className={styles.fieldHalf}><label className={styles.label} htmlFor={`${block.id}-width`}>Intrinsic width</label><input className={styles.input} id={`${block.id}-width`} type="number" min={1} max={12000} value={block.width} onChange={(event) => onChange({ ...block, width: Number(event.target.value) })} /></div>
         <div className={styles.fieldHalf}><label className={styles.label} htmlFor={`${block.id}-height`}>Intrinsic height</label><input className={styles.input} id={`${block.id}-height`} type="number" min={1} max={12000} value={block.height} onChange={(event) => onChange({ ...block, height: Number(event.target.value) })} /></div>
-        <p className={`${styles.hint} ${styles.fieldWide}`}>Use a relative site path or an HTTPS image URL. Alternative text is required before review or publication.</p>
+        <p className={`${styles.hint} ${styles.fieldWide}`}>Use the managed uploader or an existing same-site raster image path. Alternative text is required before review or publication.</p>
       </div>;
     case "table":
       return <>
@@ -237,17 +237,8 @@ function ManagedImageUpload({ publicationId, onUploaded }: {
     setPending(true);
     setMessage("");
     try {
-      const objectUrl = URL.createObjectURL(file);
-      const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
-        const image = new window.Image();
-        image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-        image.onerror = () => reject(new Error("The selected image could not be decoded."));
-        image.src = objectUrl;
-      }).finally(() => URL.revokeObjectURL(objectUrl));
       const body = new FormData();
       body.set("image", file);
-      body.set("width", String(dimensions.width));
-      body.set("height", String(dimensions.height));
       const response = await fetch(`/api/admin/publications/${encodeURIComponent(publicationId)}/images`, {
         method: "POST",
         headers: { Accept: "application/json" },
@@ -274,7 +265,7 @@ function ManagedImageUpload({ publicationId, onUploaded }: {
         onChange={(event) => setFile(event.target.files?.[0] ?? null)}
       />
       <button className={styles.buttonSecondary} type="button" disabled={!file || pending} onClick={upload}>{pending ? "Uploading…" : "Upload selected image"}</button>
-      <span className={styles.hint} role="status">{message || "JPEG, PNG or WebP; maximum 5 MB."}</span>
+      <span className={styles.hint} role="status">{message || "JPEG, PNG or WebP; maximum 5 MB. Dimensions are verified on the server."}</span>
     </fieldset>
   );
 }

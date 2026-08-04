@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   formatPublicationDate,
   getLiveAdjacentPublications,
@@ -7,6 +8,7 @@ import {
   getLiveRelatedPublications,
   type ArticlePublication,
 } from "@/lib/publications";
+import { absoluteSiteUrl, publicationSocialImagePath } from "@/lib/seo";
 import { ArticleBody } from "./ArticleBody";
 import { PdfActions } from "./PdfActions";
 import { RelatedPublications } from "./RelatedPublications";
@@ -25,7 +27,13 @@ function headingText(publication: ArticlePublication) {
   );
 }
 
-export async function ArticlePublicationPage({ publication }: { publication: ArticlePublication }) {
+export async function ArticlePublicationPage({
+  publication,
+  privatePreview = false,
+}: {
+  publication: ArticlePublication;
+  privatePreview?: boolean;
+}) {
   const [related, adjacent] = await Promise.all([
     getLiveRelatedPublications(publication, 3),
     getLiveAdjacentPublications(publication),
@@ -39,6 +47,7 @@ export async function ArticlePublicationPage({ publication }: { publication: Art
     ["Deal status", publication.structured.dealStatus],
     ["Deal value", publication.structured.dealValue],
   ].filter((item): item is [string, string] => Boolean(item[1]));
+  const canonicalUrl = absoluteSiteUrl(getPublicationHref(publication));
 
   const articleSchema = {
     "@context": "https://schema.org",
@@ -47,9 +56,15 @@ export async function ArticlePublicationPage({ publication }: { publication: Art
     datePublished: publication.publishedAt ?? publication.publicationDate,
     dateModified: publication.updatedAt,
     author: publication.authors.map((name) => ({ "@type": "Person", name })),
-    publisher: { "@type": "Organization", name: "M&A Watch" },
+    publisher: {
+      "@type": "Organization",
+      name: "M&A Watch",
+      logo: { "@type": "ImageObject", url: absoluteSiteUrl("/brand/logo-black-mark.png") },
+    },
     description: publication.summary,
-    mainEntityOfPage: getPublicationHref(publication),
+    image: absoluteSiteUrl(publication.cover?.src ?? publicationSocialImagePath(publication)),
+    url: canonicalUrl,
+    mainEntityOfPage: { "@type": "WebPage", "@id": canonicalUrl },
   };
 
   return (
@@ -94,9 +109,21 @@ export async function ArticlePublicationPage({ publication }: { publication: Art
                   </div>
                 ) : null}
               </dl>
-              <PdfActions filename={publication.pdfFilename} pdfUrl={publication.pdfUrl} />
+              <PdfActions filename={publication.pdfFilename} pdfUrl={publication.pdfUrl} publicationType={publication.type} />
             </div>
           </div>
+          {publication.cover ? (
+            <figure className={styles.detailCover}>
+              <Image
+                src={publication.cover.src}
+                alt={publication.cover.alt}
+                width={publication.cover.width}
+                height={publication.cover.height}
+                sizes="(max-width: 900px) 100vw, 1180px"
+                unoptimized={privatePreview}
+              />
+            </figure>
+          ) : null}
         </div>
       </header>
 
@@ -139,13 +166,19 @@ export async function ArticlePublicationPage({ publication }: { publication: Art
           <div className={styles.sourceCard}>
             <span aria-hidden="true">PDF</span>
             <p>Prefer the original?</p>
-            <a href={publication.pdfUrl} rel="noreferrer" target="_blank">
+            <a
+              data-analytics-event="report_pdf_view"
+              data-analytics-value={publication.type}
+              href={publication.pdfUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
               Open source report <span aria-hidden="true">↗</span>
             </a>
           </div>
         </aside>
         <article className={styles.articleColumn}>
-          <ArticleBody blocks={publication.body} />
+          <ArticleBody blocks={publication.body} privatePreview={privatePreview} />
         </article>
       </div>
 

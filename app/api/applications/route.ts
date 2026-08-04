@@ -1,5 +1,4 @@
 import { ensureDatabase } from "@/db/bootstrap";
-import { writeAudit } from "@/lib/audit";
 import type { EmailJob } from "@/lib/email-queue";
 import {
   createId,
@@ -13,10 +12,38 @@ import {
   hasSafeRequestOrigin,
   inspectPdf,
   MAX_CV_BYTES,
+  MAX_CV_MULTIPART_BYTES,
+  readBoundedMultipartForm,
   rateLimit,
 } from "@/lib/security";
+import {
+  applicantRetentionDeadline,
+  isApplicantCvKey,
+} from "@/lib/recruitment-policy";
+import { currentRecruitmentReadiness } from "@/lib/recruitment-runtime";
+import { getPublishedSiteContact } from "@/lib/public-content";
 
 const DIVISIONS = new Set(["law", "finance", "markets"]);
+
+type ApplicationSettingsSnapshot = {
+  open: number;
+  notification_recipients: string;
+  privacy_policy_version: string;
+  retention_days: number | null;
+};
+
+type ReadyApplicationSettingsSnapshot = Omit<
+  ApplicationSettingsSnapshot,
+  "retention_days"
+> & { retention_days: number };
+
+type ApplicationIntakeGate =
+  | {
+      ok: true;
+      settings: ReadyApplicationSettingsSnapshot;
+      recipients: string[];
+    }
+  | { ok: false; response: Response };
 
 export async function POST(request: Request) {
   if (!hasSafeRequestOrigin(request)) {
@@ -25,34 +52,26 @@ export async function POST(request: Request) {
   if (!(await rateLimit(request, "application-submit", 6, 15 * 60 * 1000))) {
     return Response.json(
       { error: "Too many attempts. Please wait before trying again." },
-      { status: 429 },
+      { status: 429, headers: { "Retry-After": "900" } },
     );
   }
-
   await ensureDatabase();
-  const settings = await database()
-    .prepare(
-      `SELECT open, notification_recipients, privacy_policy_version
-       FROM application_settings WHERE id = 1`,
-    )
-    .first<{
-      open: number;
-      notification_recipients: string;
-      privacy_policy_version: string;
-    }>();
-  if (!settings?.open) {
-    return Response.json({ error: "Applications are currently closed." }, { status: 409 });
-  }
+  const initialGate = await applicationIntakeGate();
+  if (!initialGate.ok) return initialGate.response;
+  const { settings, recipients } = initialGate;
 
-  let form: FormData;
-  try {
-    form = await request.formData();
-  } catch {
-    return Response.json({ error: "The submitted form could not be read." }, { status: 400 });
+  const upload = await readBoundedMultipartForm(request, {
+    maxBytes: MAX_CV_MULTIPART_BYTES,
+    invalidMessage: "The submitted form could not be read.",
+    tooLargeMessage: "The submitted application is too large. CVs may be up to 10 MB.",
+  });
+  if (!upload.ok) {
+    return Response.json({ error: upload.error }, { status: upload.status });
   }
+  const form = upload.form;
 
   if (cleanPlainText(form.get("website"), 200)) {
-    return Response.json({ ok: true, applicationId: "received" }, { status: 201 });
+    return Response.json({ ok: true }, { status: 201 });
   }
   const startedAt = Number(form.get("formStartedAt") ?? 0);
   if (startedAt && Date.now() - startedAt < 1_500) {
@@ -81,10 +100,10 @@ export async function POST(request: Request) {
   }
 
   const existing = await database()
-    .prepare("SELECT id FROM applicants WHERE submission_key = ? LIMIT 1")
+    .prepare("SELECT 1 AS present FROM applicants WHERE submission_key = ? LIMIT 1")
     .bind(submissionKey)
-    .first<{ id: string }>();
-  if (existing) return Response.json({ ok: true, applicationId: existing.id }, { status: 200 });
+    .first<{ present: number }>();
+  if (existing) return Response.json({ ok: true }, { status: 200 });
 
   const inspected = await inspectPdf(cv as File, MAX_CV_BYTES);
   if (!inspected.ok) {
@@ -92,15 +111,36 @@ export async function POST(request: Request) {
   }
 
   const id = createId("application");
-  const safeFilename = (cv as File).name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120);
+  const safeFilename =
+    (cv as File).name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120) ||
+    "applicant-cv.pdf";
   const cvKey = `private/applicants/${id}/${crypto.randomUUID()}-${safeFilename}`;
+  if (!isApplicantCvKey(id, cvKey)) {
+    return Response.json(
+      { error: "The CV could not be stored safely." },
+      { status: 500 },
+    );
+  }
+
+  const beforeStaging = await applicationIntakeGate(settings);
+  if (!beforeStaging.ok) return beforeStaging.response;
   await privateFiles().put(cvKey, inspected.bytes, {
     httpMetadata: { contentType: "application/pdf" },
     customMetadata: { applicationId: id, scanStatus: "quarantined" },
   });
 
+  const beforePersistence = await applicationIntakeGate(settings);
+  if (!beforePersistence.ok) {
+    await privateFiles().delete(cvKey);
+    return beforePersistence.response;
+  }
+
   const now = Date.now();
-  const recipients = safeJson<string[]>(settings.notification_recipients, []);
+  const retentionExpiresAt = applicantRetentionDeadline(
+    now,
+    settings.retention_days,
+  );
+  const contact = await getPublishedSiteContact();
   const emailJobs: EmailJob[] = [
     {
       template: "applicant-confirmation",
@@ -109,7 +149,7 @@ export async function POST(request: Request) {
         name,
         division,
         applicationId: id,
-        contactEmail: "hello@mawatch.org",
+        contactEmail: contact.email,
       },
     },
     ...(recipients.length
@@ -131,14 +171,23 @@ export async function POST(request: Request) {
   ];
   try {
     const db = database();
+    const settingsGuard = `FROM application_settings
+      WHERE id = 1 AND open = 1 AND notification_recipients = ?
+        AND privacy_policy_version = ? AND retention_days = ?`;
+    const guardBindings = [
+      settings.notification_recipients,
+      settings.privacy_policy_version,
+      settings.retention_days,
+    ] as const;
     const statements: D1PreparedStatement[] = [
       database()
         .prepare(
           `INSERT INTO applicants
            (id, submission_key, name, university, email, division, cv_key, cv_filename,
             cv_size, status, privacy_acknowledged_at, privacy_policy_version, source,
-            campaign, submitted_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?, ?)`,
+            campaign, submitted_at, retention_expires_at, updated_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?, ?, ?, ?, ?, ?
+           ${settingsGuard}`,
         )
         .bind(
           id,
@@ -155,22 +204,33 @@ export async function POST(request: Request) {
           cleanPlainText(form.get("source"), 100) || null,
           cleanPlainText(form.get("campaign"), 100) || null,
           now,
+          retentionExpiresAt,
           now,
+          ...guardBindings,
         ),
       database()
         .prepare(
           `INSERT INTO applicant_status_history
            (id, applicant_id, from_status, to_status, changed_by, changed_at)
-           VALUES (?, ?, NULL, 'new', NULL, ?)`,
+           SELECT ?, ?, NULL, 'new', NULL, ?
+           ${settingsGuard}`,
         )
-        .bind(createId("history"), id, now),
+        .bind(createId("history"), id, now, ...guardBindings),
       database()
         .prepare(
           `INSERT INTO background_jobs
            (id, type, status, payload, attempts, run_after, created_at, updated_at)
-           VALUES (?, 'file_scan', 'queued', ?, 0, ?, ?, ?)`,
+           SELECT ?, 'file_scan', 'queued', ?, 0, ?, ?, ?
+           ${settingsGuard}`,
         )
-        .bind(createId("job"), JSON.stringify({ applicationId: id, key: cvKey }), now, now, now),
+        .bind(
+          createId("job"),
+          JSON.stringify({ applicationId: id, key: cvKey }),
+          now,
+          now,
+          now,
+          ...guardBindings,
+        ),
     ];
     for (const emailJob of emailJobs) {
       statements.push(
@@ -178,7 +238,8 @@ export async function POST(request: Request) {
           .prepare(
             `INSERT INTO background_jobs
              (id, type, status, payload, attempts, run_after, created_at, updated_at)
-             VALUES (?, 'email', 'queued', ?, 0, ?, ?, ?)`,
+             SELECT ?, 'email', 'queued', ?, 0, ?, ?, ?
+             ${settingsGuard}`,
           )
           .bind(
             createId("job"),
@@ -186,31 +247,106 @@ export async function POST(request: Request) {
             now,
             now,
             now,
-          ),
+            ...guardBindings,
+        ),
       );
     }
-    await db.batch(statements);
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO audit_log
+           (id, actor_id, action, entity_type, entity_id, metadata, created_at)
+           SELECT ?, NULL, 'application.submitted', 'applicant', ?, ?, ?
+           FROM applicants
+           WHERE id = ? AND EXISTS (
+             SELECT 1 FROM application_settings
+             WHERE id = 1 AND open = 1 AND notification_recipients = ?
+               AND privacy_policy_version = ? AND retention_days = ?
+           )`,
+        )
+        .bind(
+          createId("audit"),
+          id,
+          JSON.stringify({ division, duplicateEmailCheck: true }),
+          now,
+          id,
+          ...guardBindings,
+        ),
+    );
+    const results = await db.batch(statements);
+    if (
+      (results[0]?.meta.changes ?? 0) !== 1 ||
+      (results.at(-1)?.meta.changes ?? 0) !== 1
+    ) {
+      await privateFiles().delete(cvKey);
+      const closedOrChanged = await applicationIntakeGate(settings);
+      return closedOrChanged.ok
+        ? temporarilyUnavailableResponse()
+        : closedOrChanged.response;
+    }
   } catch (error) {
     await privateFiles().delete(cvKey);
     if (
       String(error).includes("idx_applicants_submission_key") ||
       String(error).includes("applicants.submission_key")
     ) {
-      const duplicate = await database()
-        .prepare("SELECT id FROM applicants WHERE submission_key = ? LIMIT 1")
-        .bind(submissionKey)
-        .first<{ id: string }>();
-      return Response.json({ ok: true, applicationId: duplicate?.id ?? id }, { status: 200 });
+      return Response.json({ ok: true }, { status: 200 });
     }
     throw error;
   }
 
-  await writeAudit({
-    action: "application.submitted",
-    entityType: "applicant",
-    entityId: id,
-    metadata: { division, duplicateEmailCheck: true },
-  });
+  return Response.json({ ok: true }, { status: 201 });
+}
 
-  return Response.json({ ok: true, applicationId: id }, { status: 201 });
+async function applicationIntakeGate(
+  expected?: ReadyApplicationSettingsSnapshot,
+): Promise<ApplicationIntakeGate> {
+  const settings = await database()
+    .prepare(
+      `SELECT open, notification_recipients, privacy_policy_version, retention_days
+       FROM application_settings WHERE id = 1`,
+    )
+    .first<ApplicationSettingsSnapshot>();
+
+  // Evaluate closure first so closing intake always wins over simultaneous
+  // readiness or policy edits.
+  if (!settings?.open) {
+    return {
+      ok: false,
+      response: Response.json(
+        { error: "Applications are currently closed." },
+        { status: 409 },
+      ),
+    };
+  }
+
+  const recipients = safeJson<string[]>(settings.notification_recipients, []);
+  const readiness = currentRecruitmentReadiness({
+    retentionDays: settings.retention_days,
+    privacyPolicyVersion: settings.privacy_policy_version,
+    notificationRecipients: recipients,
+  });
+  if (
+    !readiness.ready ||
+    settings.retention_days === null ||
+    (expected !== undefined &&
+      (settings.notification_recipients !== expected.notification_recipients ||
+        settings.privacy_policy_version !== expected.privacy_policy_version ||
+        settings.retention_days !== expected.retention_days))
+  ) {
+    return { ok: false, response: temporarilyUnavailableResponse() };
+  }
+
+  return {
+    ok: true,
+    settings: settings as ReadyApplicationSettingsSnapshot,
+    recipients,
+  };
+}
+
+function temporarilyUnavailableResponse(): Response {
+  return Response.json(
+    { error: "Applications are temporarily unavailable." },
+    { status: 503, headers: { "Retry-After": "3600" } },
+  );
 }

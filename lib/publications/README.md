@@ -15,8 +15,10 @@ continue working without client JavaScript. Seed records include scheduled and
 review publications so accidental public leakage can be checked during database
 integration.
 
-The records in `data.ts` are representative launch placeholders. Replace the
-internal array with a database repository while keeping the public service
-contract and visibility predicate intact. Markets records intentionally have no
-web-article body and therefore cannot pass through the report renderer or PDF
-parser.
+The records in `data.ts` are representative preview placeholders. Live public
+requests use managed D1 content by default and do not substitute these records
+when D1 is missing or unavailable. A local or preview environment must set
+`PUBLICATION_CONTENT_MODE=demo` explicitly to merge the placeholder catalogue;
+missing, blank and unknown values fail closed to managed mode. Markets records
+intentionally have no web-article body and therefore cannot pass through the
+report renderer or PDF parser.

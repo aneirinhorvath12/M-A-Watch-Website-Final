@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   formatPublicationDate,
   getPublicationHref,
@@ -25,18 +26,30 @@ export function PublicationCard({ publication }: { publication: Publication }) {
   return (
     <article className={styles.publicationCard} data-publication-type={publication.type}>
       <Link
-        aria-label={`Read ${publication.title}`}
+        aria-label={publication.cover ? undefined : `Read ${publication.title}`}
         className={styles.cardArtwork}
         href={href}
       >
-        <span className={styles.cardArtworkRule} />
-        <span className={styles.cardArtworkType}>
-          {getPublicationTypeLabel(publication.type)}
-        </span>
-        <span className={styles.cardArtworkInitials} aria-hidden="true">
-          {initials(publication.title)}
-        </span>
-        <span className={styles.cardArtworkBrand}>M&amp;A WATCH</span>
+        {publication.cover ? (
+          <Image
+            className={styles.cardCover}
+            src={publication.cover.src}
+            alt={publication.cover.alt}
+            fill
+            sizes="(max-width: 760px) 100vw, (max-width: 1100px) 50vw, 33vw"
+          />
+        ) : (
+          <>
+            <span className={styles.cardArtworkRule} />
+            <span className={styles.cardArtworkType}>
+              {getPublicationTypeLabel(publication.type)}
+            </span>
+            <span className={styles.cardArtworkInitials} aria-hidden="true">
+              {initials(publication.title)}
+            </span>
+            <span className={styles.cardArtworkBrand}>M&amp;A WATCH</span>
+          </>
+        )}
       </Link>
       <div className={styles.cardContent}>
         <div className={styles.cardMeta}>

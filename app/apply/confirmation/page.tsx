@@ -6,14 +6,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function ApplicationConfirmationPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ reference?: string }>;
-}) {
-  const { reference } = await searchParams;
-  const displayReference = reference && reference !== "received" ? reference.slice(-10).toUpperCase() : null;
-
+export default function ApplicationConfirmationPage() {
   return (
     <main className="confirmation-page">
       <div className="site-shell confirmation-page__grid">
@@ -25,7 +18,6 @@ export default async function ApplicationConfirmationPage({
             Your application has been stored securely. We will send a confirmation to
             the email address you provided; this confirms receipt, not an offer.
           </p>
-          {displayReference ? <p className="confirmation-reference">Reference <strong>{displayReference}</strong></p> : null}
           <div className="confirmation-next">
             <h2>What happens next</h2>
             <ol>

@@ -5,6 +5,7 @@ import { ArticlePublicationPage, MarketsPublicationPage } from "@/components/pub
 import { getAdminActor } from "@/lib/admin-auth";
 import { getPublicationAdmin } from "@/lib/admin-data";
 import { safeJson } from "@/lib/platform";
+import { publicationCoverFromStored } from "@/lib/managed-images";
 import type { ArticleBlock, ArticlePublication, MarketsPublication } from "@/lib/publications";
 import styles from "./page.module.css";
 
@@ -37,6 +38,7 @@ export default async function PublicationPreviewPage({ params }: { params: Promi
     authors: safeJson<string[]>(row.authors, []),
     chapter: row.chapter ?? undefined,
     featured: Boolean(row.featured),
+    cover: publicationCoverFromStored(row.cover_image_key, row.id),
     pdfUrl: `/api/files/publications/${encodeURIComponent(row.id)}/source`,
     pdfFilename: `${row.slug}.pdf`,
     searchKeywords: [],
@@ -63,8 +65,8 @@ export default async function PublicationPreviewPage({ params }: { params: Promi
         <Link href={`/admin/publications/${row.id}`}>Return to editing</Link>
       </div>
       {publication.type === "markets"
-        ? <MarketsPublicationPage publication={publication} />
-        : <ArticlePublicationPage publication={publication} />}
+        ? <MarketsPublicationPage publication={publication} privatePreview />
+        : <ArticlePublicationPage publication={publication} privatePreview />}
     </>
   );
 }

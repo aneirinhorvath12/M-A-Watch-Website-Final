@@ -37,9 +37,11 @@ function isCurrent(pathname: string, href: string) {
 export function SiteHeader() {
   const pathname = usePathname() ?? "/";
   const [menuOpen, setMenuOpen] = useState(false);
-  const [applicationsOpen, setApplicationsOpen] = useState(false);
+  const [applicationsOpen, setApplicationsOpen] = useState<boolean | null>(null);
   const reportsCurrent =
-    pathname.startsWith("/reports/") || pathname.startsWith("/markets");
+    pathname === "/reports" ||
+    pathname.startsWith("/reports/") ||
+    pathname.startsWith("/markets");
 
   const closeMenu = () => setMenuOpen(false);
 
@@ -66,7 +68,13 @@ export function SiteHeader() {
           <div className="site-shell site-notice__inner">
             <span>Student-led insight into history&apos;s most impactful deals</span>
             <Link href="/apply" onClick={closeMenu}>
-              {applicationsOpen ? "2026 applications open" : "Applications currently closed"} <span aria-hidden="true">→</span>
+              <span aria-atomic="true" aria-live="polite" role="status">
+                {applicationsOpen === null
+                  ? "View application information"
+                  : applicationsOpen
+                    ? "2026 applications open"
+                    : "Applications currently closed"}
+              </span>{" "}<span aria-hidden="true">→</span>
             </Link>
           </div>
         </div>

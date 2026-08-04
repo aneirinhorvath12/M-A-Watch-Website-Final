@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import { ArticlePublicationPage } from "@/components/publications";
 import {
   getLivePublicArticlePublication,
-  getPublishedPublications,
 } from "@/lib/publications";
+import { publicationSocialImage } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -12,17 +12,14 @@ interface ReportPageProps {
   params: Promise<{ slug: string }>;
 }
 
-export function generateStaticParams() {
-  return getPublishedPublications("legal").map(({ slug }) => ({ slug }));
-}
-
 export async function generateMetadata({ params }: ReportPageProps): Promise<Metadata> {
   const { slug } = await params;
   const publication = await getLivePublicArticlePublication("legal", slug);
-  if (!publication) return { title: "Report not found | M&A Watch" };
+  if (!publication) return { title: "Report not found", robots: { index: false, follow: false } };
   const canonical = `/reports/legal/${publication.slug}`;
+  const socialImage = publicationSocialImage(publication);
   return {
-    title: `${publication.title} | M&A Watch`,
+    title: publication.title,
     description: publication.summary,
     alternates: { canonical },
     openGraph: {
@@ -33,7 +30,9 @@ export async function generateMetadata({ params }: ReportPageProps): Promise<Met
       modifiedTime: publication.updatedAt,
       authors: publication.authors,
       url: canonical,
+      images: [socialImage],
     },
+    twitter: { card: "summary_large_image", title: publication.title, description: publication.summary, images: [socialImage] },
   };
 }
 

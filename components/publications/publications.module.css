@@ -339,6 +339,41 @@
   text-decoration: none;
 }
 
+.cardCover {
+  object-fit: cover;
+}
+
+.detailCover {
+  margin: clamp(2rem, 5vw, 4rem) 0 0;
+  overflow: hidden;
+}
+
+.detailCover img {
+  display: block;
+  height: auto;
+  max-height: 72rem;
+  object-fit: cover;
+  width: 100%;
+}
+
+.marketsCover {
+  align-self: stretch;
+  aspect-ratio: 0.76;
+  box-shadow: 1.5rem 1.5rem 0 rgba(255, 255, 255, 0.09);
+  justify-self: end;
+  margin: 0;
+  max-width: 24rem;
+  overflow: hidden;
+  width: 100%;
+}
+
+.marketsCover img {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
 .publicationCard[data-publication-type="legal"] .cardArtwork {
   background:
     linear-gradient(150deg, transparent 0 48%, rgba(255, 255, 255, 0.08) 48% 100%),

@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { trackAnalytics } from "./analytics-tracker";
 
 type FieldName = "name" | "university" | "email" | "division" | "cv" | "privacyConsent";
 type FieldErrors = Partial<Record<FieldName, string>>;
@@ -9,6 +11,7 @@ type FieldErrors = Partial<Record<FieldName, string>>;
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
 export function ApplicationForm() {
+  const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [session, setSession] = useState({ submissionKey: "", formStartedAt: "" });
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -75,6 +78,10 @@ export function ApplicationForm() {
     setErrors(clientErrors);
     setMessage("");
     if (Object.keys(clientErrors).length) {
+      trackAnalytics({
+        event: "application_validation_failure",
+        value: clientErrors.cv ? "upload_validation" : "client_validation",
+      });
       setMessage("Please check the highlighted fields.");
       focusFirstError(clientErrors);
       return;
@@ -88,22 +95,34 @@ export function ApplicationForm() {
       });
       const result = (await response.json()) as {
         ok?: boolean;
-        applicationId?: string;
         error?: string;
         fields?: FieldErrors;
       };
 
       if (!response.ok || !result.ok) {
         const serverErrors = result.fields ?? {};
+        trackAnalytics({
+          event: "application_validation_failure",
+          value:
+            response.status === 409 || response.status === 503
+              ? "policy_unavailable"
+              : serverErrors.cv
+                ? "upload_validation"
+                : "server_validation",
+        });
         setErrors(serverErrors);
         setMessage(result.error ?? "We could not submit your application. Please try again.");
         focusFirstError(serverErrors);
         return;
       }
 
-      const reference = result.applicationId ? `?reference=${encodeURIComponent(result.applicationId)}` : "";
-      window.location.assign(`/apply/confirmation${reference}`);
+      trackAnalytics({ event: "application_submit_success" });
+      router.replace("/apply/confirmation");
     } catch {
+      trackAnalytics({
+        event: "application_validation_failure",
+        value: "network",
+      });
       setMessage("We could not connect to the application service. Please try again shortly.");
     } finally {
       setSubmitting(false);

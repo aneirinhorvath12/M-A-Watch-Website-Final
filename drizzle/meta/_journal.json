@@ -22,6 +22,27 @@
       "when": 1785851889028,
       "tag": "0002_curved_daredevil",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1785861866485,
+      "tag": "0003_zippy_dragon_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1785868948555,
+      "tag": "0004_melodic_famine",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1785871352468,
+      "tag": "0005_skinny_thanos",
+      "breakpoints": true
     }
   ]
 }

@@ -1,12 +1,17 @@
 import { ensureDatabase } from "@/db/bootstrap";
 import { database, safeJson } from "@/lib/platform";
-
-export type PublishedContent = {
-  title?: string;
-  body?: string;
-  ctaLabel?: string;
-  ctaHref?: string;
-};
+import { normaliseTeamPhotoPath } from "@/lib/team-media";
+import { currentRecruitmentReadiness } from "@/lib/recruitment-runtime";
+import {
+  coerceManagedContent,
+  defaultForKey,
+  type BasicPageContent,
+  type HomepageEditorialContent,
+  type InfoPageContent,
+  type ManagedContentKey,
+  type ManagedContentValue,
+  type SiteContactContent,
+} from "@/lib/site-content";
 
 export type PublicTeamMember = {
   id: string;
@@ -14,6 +19,8 @@ export type PublicTeamMember = {
   role: string;
   groupName: string;
   biography: string;
+  photoKey?: string;
+  photoAlt?: string;
   linkedInUrl?: string;
   displayOrder: number;
 };
@@ -25,17 +32,39 @@ export type PublicApplicationSettings = {
   privacyPolicyVersion: string;
 };
 
-export async function getPublishedContent(key: string): Promise<PublishedContent | null> {
+async function getPublishedManagedContent(
+  key: ManagedContentKey,
+): Promise<ManagedContentValue> {
   try {
     await ensureDatabase();
     const row = await database()
       .prepare("SELECT published_value FROM content_entries WHERE key = ? AND published_at IS NOT NULL")
       .bind(key)
       .first<{ published_value: string }>();
-    return row ? safeJson<PublishedContent>(row.published_value, {}) : null;
+    return row
+      ? coerceManagedContent(key, safeJson<unknown>(row.published_value, null))
+      : defaultForKey(key);
   } catch {
-    return null;
+    return defaultForKey(key);
   }
+}
+
+export async function getPublishedBasicContent(
+  key: "homepage.hero" | "homepage.overview",
+): Promise<BasicPageContent> {
+  return getPublishedManagedContent(key) as Promise<BasicPageContent>;
+}
+
+export async function getPublishedHomepageEditorial(): Promise<HomepageEditorialContent> {
+  return getPublishedManagedContent("homepage.editorial") as Promise<HomepageEditorialContent>;
+}
+
+export async function getPublishedInfoPage(): Promise<InfoPageContent> {
+  return getPublishedManagedContent("info.page") as Promise<InfoPageContent>;
+}
+
+export async function getPublishedSiteContact(): Promise<SiteContactContent> {
+  return getPublishedManagedContent("site.contact") as Promise<SiteContactContent>;
 }
 
 export async function getPublicTeamMembers(): Promise<PublicTeamMember[]> {
@@ -43,7 +72,7 @@ export async function getPublicTeamMembers(): Promise<PublicTeamMember[]> {
     await ensureDatabase();
     const rows = await database()
       .prepare(
-        `SELECT id, name, role, group_name, biography, linkedin_url, display_order
+        `SELECT id, name, role, group_name, biography, photo_key, photo_alt, linkedin_url, display_order
          FROM team_members WHERE active = 1
          ORDER BY group_name ASC, display_order ASC, name ASC`,
       )
@@ -53,6 +82,8 @@ export async function getPublicTeamMembers(): Promise<PublicTeamMember[]> {
         role: string;
         group_name: string;
         biography: string;
+        photo_key: string | null;
+        photo_alt: string | null;
         linkedin_url: string | null;
         display_order: number;
       }>();
@@ -62,6 +93,8 @@ export async function getPublicTeamMembers(): Promise<PublicTeamMember[]> {
       role: row.role,
       groupName: row.group_name,
       biography: row.biography,
+      photoKey: normaliseTeamPhotoPath(row.photo_key ?? ""),
+      photoAlt: row.photo_alt ?? undefined,
       linkedInUrl: row.linkedin_url ?? undefined,
       displayOrder: row.display_order,
     }));
@@ -93,18 +126,31 @@ export async function getPublicApplicationSettings(): Promise<PublicApplicationS
     await ensureDatabase();
     const row = await database()
       .prepare(
-        `SELECT open, introduction, closed_message, privacy_policy_version
+        `SELECT open, introduction, closed_message, notification_recipients,
+                privacy_policy_version, retention_days
          FROM application_settings WHERE id = 1`,
       )
       .first<{
         open: number;
         introduction: string;
         closed_message: string;
+        notification_recipients: string;
         privacy_policy_version: string;
+        retention_days: number | null;
       }>();
+    const readiness = row
+      ? currentRecruitmentReadiness({
+          retentionDays: row.retention_days,
+          privacyPolicyVersion: row.privacy_policy_version,
+          notificationRecipients: safeJson<string[]>(
+            row.notification_recipients,
+            [],
+          ),
+        })
+      : null;
     return row
       ? {
-          open: Boolean(row.open),
+          open: Boolean(row.open) && Boolean(readiness?.ready),
           introduction: row.introduction,
           closedMessage: row.closed_message,
           privacyPolicyVersion: row.privacy_policy_version,

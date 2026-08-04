@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { PageIntro } from "@/components/site/page-intro";
 import { getPublicTeamMembers, hasManagedTeamRecords } from "@/lib/public-content";
@@ -18,6 +19,8 @@ type TeamMemberView = {
   bio: string;
   initials: string;
   colour: string;
+  photoKey?: string;
+  photoAlt?: string;
   linkedInUrl?: string;
 };
 
@@ -70,6 +73,8 @@ export default async function TeamPage() {
       bio: member.biography,
       initials: member.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase(),
       colour: colours[index % colours.length],
+      photoKey: member.photoKey,
+      photoAlt: member.photoAlt,
       linkedInUrl: member.linkedInUrl,
     });
     liveGroups.set(member.groupName, list);
@@ -102,10 +107,12 @@ export default async function TeamPage() {
               awareness. Every active member contributes to a culture of integrity,
               capability and constructive challenge.
             </p>
-            <p className="content-note">
-              These representative profiles are placeholder content and can be replaced
-              with the confirmed M&amp;A Watch team before launch.
-            </p>
+            {!hasManagedRecords ? (
+              <p className="content-note">
+                These representative profiles are placeholder content and can be replaced
+                with the confirmed M&amp;A Watch team before launch.
+              </p>
+            ) : null}
           </div>
         </div>
       </section>
@@ -134,17 +141,29 @@ export default async function TeamPage() {
             <div className="team-grid">
               {group.members.map((member) => (
                 <article className="team-card" key={member.name}>
-                  <div className={`team-card__portrait team-card__portrait--${member.colour}`} role="img" aria-label={`Portrait placeholder for ${member.name}`}>
-                    <span>{member.initials}</span>
-                    <span className="team-card__portrait-line" aria-hidden="true" />
-                  </div>
+                  {member.photoKey && member.photoAlt ? (
+                    <div className="team-card__portrait team-card__portrait--photo">
+                      <Image
+                        alt={member.photoAlt}
+                        className="team-card__photo"
+                        fill
+                        sizes="(max-width: 720px) 100vw, (max-width: 1080px) 50vw, 33vw"
+                        src={member.photoKey}
+                      />
+                    </div>
+                  ) : (
+                    <div className={`team-card__portrait team-card__portrait--${member.colour}`} role="img" aria-label={`Portrait placeholder for ${member.name}`}>
+                      <span>{member.initials}</span>
+                      <span className="team-card__portrait-line" aria-hidden="true" />
+                    </div>
+                  )}
                   <div className="team-card__content">
                     <p className="team-card__role">{member.role}</p>
                     <h3>{member.name}</h3>
                     <p>{member.bio}</p>
                     {member.linkedInUrl ? (
                       <a href={member.linkedInUrl} rel="noreferrer" target="_blank">
-                        LinkedIn <span aria-hidden="true">↗</span>
+                        LinkedIn <span aria-hidden="true">↗</span><span className="sr-only"> (opens in a new tab)</span>
                       </a>
                     ) : null}
                   </div>

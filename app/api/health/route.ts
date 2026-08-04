@@ -1,11 +1,16 @@
 import { env } from "cloudflare:workers";
+import {
+  missingProductionServiceConfiguration,
+  productionServicesAreRequired,
+  type ProductionReadinessEnv,
+} from "@/lib/runtime-readiness";
 
 export const dynamic = "force-dynamic";
 
 type ReadinessEnv = {
   DB?: D1Database;
   FILES?: R2Bucket;
-};
+} & ProductionReadinessEnv;
 
 const noStoreHeaders = { "cache-control": "no-store, max-age=0" };
 
@@ -13,6 +18,15 @@ async function readinessResponse(includeBody = true): Promise<Response> {
   const bindings = env as unknown as ReadinessEnv;
   try {
     if (!bindings.DB || !bindings.FILES) throw new Error("Missing runtime binding");
+    if (productionServicesAreRequired(bindings)) {
+      const missing = missingProductionServiceConfiguration(bindings);
+      if (missing.length) {
+        console.error(
+          `Production service configuration is incomplete: ${missing.join(", ")}`,
+        );
+        throw new Error("Production service configuration is incomplete");
+      }
+    }
     const databaseCheck = await bindings.DB.prepare("SELECT 1 AS ready").first<{
       ready: number;
     }>();
@@ -25,7 +39,13 @@ async function readinessResponse(includeBody = true): Promise<Response> {
       ? Response.json(
           {
             status: "ready",
-            checks: { database: "ok", privateStorage: "ok" },
+            checks: {
+              database: "ok",
+              privateStorage: "ok",
+              productionServices: productionServicesAreRequired(bindings)
+                ? "ok"
+                : "not-enforced",
+            },
           },
           { status: 200, headers: noStoreHeaders },
         )

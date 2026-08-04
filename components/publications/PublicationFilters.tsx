@@ -21,9 +21,23 @@ export function PublicationFilters({
   showAttribution = true,
 }: PublicationFiltersProps) {
   const hasFilters = Boolean(query.q || query.year || query.by || query.type);
+  const collection =
+    action === "/reports/strategic"
+      ? "strategic"
+      : action === "/reports/legal"
+        ? "legal"
+        : action === "/markets"
+          ? "markets"
+          : "all";
 
   return (
-    <form action={action} className={styles.filterForm} method="get" role="search">
+    <form
+      action={action}
+      className={styles.filterForm}
+      data-analytics-publication-filters={collection}
+      method="get"
+      role="search"
+    >
       <label className={styles.searchField}>
         <span>Search publications</span>
         <span className={styles.searchInputWrap}>
@@ -79,7 +93,12 @@ export function PublicationFilters({
           Apply filters
         </button>
         {hasFilters ? (
-          <Link className={styles.filterReset} href={action}>
+          <Link
+            className={styles.filterReset}
+            data-analytics-event="publication_filter"
+            data-analytics-value={`reset:${collection}`}
+            href={action}
+          >
             Clear
           </Link>
         ) : null}

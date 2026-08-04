@@ -25,7 +25,13 @@ function renderHeading(block: Extract<ArticleBlock, { type: "heading" }>) {
   );
 }
 
-export function ArticleBody({ blocks }: { blocks: ArticleBlock[] }) {
+export function ArticleBody({
+  blocks,
+  privatePreview = false,
+}: {
+  blocks: ArticleBlock[];
+  privatePreview?: boolean;
+}) {
   return (
     <div className={styles.articleBody}>
       {blocks.map((block) => {
@@ -62,27 +68,16 @@ export function ArticleBody({ blocks }: { blocks: ArticleBlock[] }) {
           case "image":
             return (
               <figure className={styles.articleFigure} key={block.id}>
-                {block.src.startsWith("/") && !block.src.startsWith("/api/") ? (
+                {block.src.startsWith("/") && !block.src.startsWith("//") ? (
                   <Image
                     alt={block.alt}
                     height={block.height}
                     sizes="(max-width: 800px) 100vw, 760px"
                     src={block.src}
                     width={block.width}
+                    unoptimized={privatePreview && block.src.startsWith("/api/publications/")}
                   />
-                ) : (
-                  // External editorial images load directly in the browser so
-                  // the public optimizer cannot be abused as an SSRF proxy.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    alt={block.alt}
-                    decoding="async"
-                    height={block.height}
-                    loading="lazy"
-                    src={block.src}
-                    width={block.width}
-                  />
-                )}
+                ) : <span role="img" aria-label={block.alt}>Image unavailable</span>}
                 {block.caption ? <figcaption>{block.caption}</figcaption> : null}
               </figure>
             );

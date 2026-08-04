@@ -1,5 +1,8 @@
 # Senior engineering review
 
+> Superseded by `docs/release-readiness.md`. This document records an earlier
+> review snapshot and its test counts must not be treated as current.
+
 **Reviewed:** 4 August 2026  
 **Scope:** final integrated M&A Watch repository, including public routes, D1/R2 persistence, admin/RBAC, applications, publishing, parser jobs, structured editing and Sites build output.
 

@@ -3,10 +3,15 @@ const REQUIRED_TABLES = new Set([
   "publications",
   "publication_revisions",
   "applicants",
+  "applicant_notes",
+  "applicant_status_history",
+  "team_members",
+  "content_entries",
   "rate_limits",
   "application_settings",
   "audit_log",
   "background_jobs",
+  "analytics_daily",
 ]);
 
 export type SchemaDefinition = { name: string; sql: string | null };
@@ -17,8 +22,31 @@ export function hasExpectedSchema(definitions: readonly SchemaDefinition[]): boo
   const hasSubmissionIdempotency = /\bsubmission_key\b/i.test(
     rows.get("applicants") ?? "",
   );
+  const hasApplicantRetention =
+    /\bretention_expires_at\b/i.test(rows.get("applicants") ?? "") &&
+    /\bdeletion_requested_at\b/i.test(rows.get("applicants") ?? "");
   const applicationsDefaultClosed = /\bopen\b[^,]*DEFAULT\s+(?:false|0)\b/i.test(
     rows.get("application_settings") ?? "",
   );
-  return hasRequiredTables && hasSubmissionIdempotency && applicationsDefaultClosed;
+  const hasRetentionPolicy = /\bretention_days\b/i.test(
+    rows.get("application_settings") ?? "",
+  );
+  const hasAggregateAnalytics =
+    /\bdimension_name\b/i.test(rows.get("analytics_daily") ?? "") &&
+    /\bdimension_value\b/i.test(rows.get("analytics_daily") ?? "") &&
+    /PRIMARY\s+KEY\s*\([^)]*\bday\b[^)]*\bevent\b[^)]*\bdimension_name\b[^)]*\bdimension_value\b/i.test(
+      rows.get("analytics_daily") ?? "",
+    );
+  const hasFencedJobClaims = /\bclaim_token\b/i.test(
+    rows.get("background_jobs") ?? "",
+  );
+  return (
+    hasRequiredTables &&
+    hasSubmissionIdempotency &&
+    hasApplicantRetention &&
+    applicationsDefaultClosed &&
+    hasRetentionPolicy &&
+    hasAggregateAnalytics &&
+    hasFencedJobClaims
+  );
 }

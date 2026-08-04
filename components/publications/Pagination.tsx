@@ -14,11 +14,23 @@ export function Pagination({
   totalPages: number;
 }) {
   if (totalPages <= 1) return null;
+  const collection =
+    basePath === "/reports/strategic"
+      ? "strategic"
+      : basePath === "/reports/legal"
+        ? "legal"
+        : basePath === "/markets"
+          ? "markets"
+          : "all";
 
   return (
     <nav className={styles.pagination} aria-label="Publication pages">
       {page > 1 ? (
-        <Link href={`${basePath}${publicationQueryString(query, { page: page - 1 })}`}>
+        <Link
+          data-analytics-event="publication_filter"
+          data-analytics-value={`pagination:${collection}`}
+          href={`${basePath}${publicationQueryString(query, { page: page - 1 })}`}
+        >
           <span aria-hidden="true">←</span> Previous
         </Link>
       ) : (
@@ -30,7 +42,11 @@ export function Pagination({
         Page <strong>{page}</strong> of {totalPages}
       </p>
       {page < totalPages ? (
-        <Link href={`${basePath}${publicationQueryString(query, { page: page + 1 })}`}>
+        <Link
+          data-analytics-event="publication_filter"
+          data-analytics-value={`pagination:${collection}`}
+          href={`${basePath}${publicationQueryString(query, { page: page + 1 })}`}
+        >
           Next <span aria-hidden="true">→</span>
         </Link>
       ) : (

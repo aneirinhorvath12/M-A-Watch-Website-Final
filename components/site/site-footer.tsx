@@ -3,6 +3,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import {
+  coerceManagedContent,
+  DEFAULT_SITE_CONTACT,
+  type SiteContactContent,
+} from "@/lib/site-content";
 
 const reportLinks = [
   ["Strategic Deal Reports", "/reports/strategic"],
@@ -17,30 +22,27 @@ const organisationLinks = [
   ["Admin sign in", "/admin/login"],
 ] as const;
 
-export function SiteFooter() {
-  const [contact, setContact] = useState({
-    body: "Student-led research at the intersection of finance, law and global markets.",
-    href: "mailto:hello@mawatch.org",
-    label: "hello@mawatch.org",
-  });
+export function SiteFooter({
+  initialContent = DEFAULT_SITE_CONTACT,
+  loadPublished = true,
+}: {
+  initialContent?: SiteContactContent;
+  loadPublished?: boolean;
+} = {}) {
+  const [contact, setContact] = useState<SiteContactContent>(initialContent);
 
   useEffect(() => {
+    if (!loadPublished) return;
     const controller = new AbortController();
     fetch("/api/content/site.contact", { signal: controller.signal })
-      .then(async (response): Promise<{ body?: string; ctaHref?: string; ctaLabel?: string } | null> =>
-        response.ok ? (await response.json()) as { body?: string; ctaHref?: string; ctaLabel?: string } : null,
-      )
+      .then(async (response): Promise<unknown> => response.ok ? response.json() : null)
       .then((value) => {
         if (!value) return;
-        setContact((current) => ({
-          body: value.body || current.body,
-          href: value.ctaHref || current.href,
-          label: value.ctaLabel || value.ctaHref?.replace(/^mailto:/, "") || current.label,
-        }));
+        setContact(coerceManagedContent("site.contact", value) as SiteContactContent);
       })
       .catch(() => undefined);
     return () => controller.abort();
-  }, []);
+  }, [loadPublished]);
 
   return (
     <footer className="site-footer">
@@ -57,9 +59,18 @@ export function SiteFooter() {
             <span>M&amp;A Watch</span>
           </Link>
           <p>{contact.body}</p>
-          <a className="site-footer__email" href={contact.href}>
-            {contact.label}
+          <a className="site-footer__email" href={`mailto:${contact.email}`}>
+            {contact.emailLabel}
           </a>
+          {contact.socialLinks.length ? (
+            <ul className="site-footer__social" aria-label="M&A Watch social channels">
+              {contact.socialLinks.map((social) => (
+                <li key={`${social.label}-${social.href}`}>
+                  <a href={social.href} rel="noreferrer">{social.label}</a>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
 
         <div className="site-footer__links">

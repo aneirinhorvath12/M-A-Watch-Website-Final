@@ -1,5 +1,8 @@
+import { env } from "cloudflare:workers";
 import { ensureDatabase } from "@/db/bootstrap";
 import { database, safeJson } from "@/lib/platform";
+import { publicationCoverFromStored } from "@/lib/managed-images";
+import { resolvePublicationContentMode } from "./content-mode";
 import {
   getPublishedPublications,
   getPublicPublication,
@@ -40,33 +43,48 @@ type PublicationRow = {
 
 const PAGE_SIZE = 6;
 
+type PublicationRuntimeEnv = {
+  PUBLICATION_CONTENT_MODE?: string;
+};
+
+function usesDemoCatalogue(): boolean {
+  return resolvePublicationContentMode(
+    (env as unknown as PublicationRuntimeEnv).PUBLICATION_CONTENT_MODE,
+  ) === "demo";
+}
+
 export async function getLivePublishedPublications(
   type?: PublicationType,
 ): Promise<Publication[]> {
-  const [databaseRecords, managedKeys] = await Promise.all([
-    readPublishedRows(type),
-    readManagedKeys(type),
-  ]);
+  if (!usesDemoCatalogue()) return readPublishedRows(type);
+
+  let databaseRecords: Publication[] = [];
+  let managedKeys = new Set<string>();
+  try {
+    [databaseRecords, managedKeys] = await Promise.all([
+      readPublishedRows(type),
+      readManagedKeys(type),
+    ]);
+  } catch {
+    // Demonstration mode is an explicit local/preview convenience. Managed
+    // mode above never substitutes seed records for an unavailable database.
+  }
   const seedRecords = getPublishedPublications(type);
   return [...databaseRecords, ...seedRecords.filter((item) => !managedKeys.has(`${item.type}:${item.slug}`))]
     .sort((a, b) => b.publicationDate.localeCompare(a.publicationDate) || a.title.localeCompare(b.title));
 }
 
 async function readManagedKeys(type?: PublicationType): Promise<Set<string>> {
-  try {
-    await ensureDatabase();
-    const result = type
-      ? await database()
-          .prepare("SELECT type, slug FROM publications WHERE type = ?")
-          .bind(type)
-          .all<{ type: PublicationType; slug: string }>()
-      : await database()
-          .prepare("SELECT type, slug FROM publications")
-          .all<{ type: PublicationType; slug: string }>();
-    return new Set(result.results.map((item) => `${item.type}:${item.slug}`));
-  } catch {
-    return new Set();
-  }
+  await ensureDatabase();
+  const result = type
+    ? await database()
+        .prepare("SELECT type, slug FROM publications WHERE type = ?")
+        .bind(type)
+        .all<{ type: PublicationType; slug: string }>()
+    : await database()
+        .prepare("SELECT type, slug FROM publications")
+        .all<{ type: PublicationType; slug: string }>();
+  return new Set(result.results.map((item) => `${item.type}:${item.slug}`));
 }
 
 export async function getLiveFeaturedPublications(limit = 3): Promise<Publication[]> {
@@ -81,10 +99,19 @@ export async function getLivePublicPublication(
   type: PublicationType,
   slug: string,
 ): Promise<Publication | undefined> {
-  const [rows, managedKeys] = await Promise.all([
-    readPublishedRows(type, slug),
-    readManagedKeys(type),
-  ]);
+  if (!usesDemoCatalogue()) return (await readPublishedRows(type, slug))[0];
+
+  let rows: Publication[] = [];
+  let managedKeys = new Set<string>();
+  try {
+    [rows, managedKeys] = await Promise.all([
+      readPublishedRows(type, slug),
+      readManagedKeys(type),
+    ]);
+  } catch {
+    // See getLivePublishedPublications: fallback is permitted only after the
+    // environment has explicitly opted into demonstration content.
+  }
   if (rows[0]) return rows[0];
   if (managedKeys.has(`${type}:${slug}`)) return undefined;
   return getPublicPublication(type, slug);
@@ -166,38 +193,34 @@ export async function getLiveAdjacentPublications(publication: Publication): Pro
 }
 
 async function readPublishedRows(type?: PublicationType, slug?: string): Promise<Publication[]> {
-  try {
-    await ensureDatabase();
-    const clauses = ["status = 'published'"];
-    const values: string[] = [];
-    if (type) {
-      clauses.push("type = ?");
-      values.push(type);
-    }
-    if (slug) {
-      clauses.push("slug = ?");
-      values.push(slug);
-    }
-    // Collection, search and related-content views must stay metadata-only. A
-    // report body can be hundreds of kilobytes and is fetched only by its
-    // unique detail route.
-    const detailColumns = slug
-      ? "cover_image_key, source_pdf_key, web_body, parser_version, parse_warnings"
-      : "NULL AS cover_image_key, NULL AS source_pdf_key, '[]' AS web_body, NULL AS parser_version, '[]' AS parse_warnings";
-    const result = await database()
-      .prepare(
-        `SELECT id, type, title, slug, summary, publication_date, status, authors, chapter,
-          ${detailColumns},
-          structured_metadata, featured, search_text, created_at, updated_at, published_at
-         FROM publications WHERE ${clauses.join(" AND ")}
-         ORDER BY publication_date DESC`,
-      )
-      .bind(...values)
-      .all<PublicationRow>();
-    return result.results.map(mapRow);
-  } catch {
-    return [];
+  await ensureDatabase();
+  const clauses = ["status = 'published'"];
+  const values: string[] = [];
+  if (type) {
+    clauses.push("type = ?");
+    values.push(type);
   }
+  if (slug) {
+    clauses.push("slug = ?");
+    values.push(slug);
+  }
+  // Collection, search and related-content views must stay metadata-only. A
+  // report body can be hundreds of kilobytes and is fetched only by its
+  // unique detail route.
+  const detailColumns = slug
+    ? "cover_image_key, source_pdf_key, web_body, parser_version, parse_warnings"
+    : "cover_image_key, NULL AS source_pdf_key, '[]' AS web_body, NULL AS parser_version, '[]' AS parse_warnings";
+  const result = await database()
+    .prepare(
+      `SELECT id, type, title, slug, summary, publication_date, status, authors, chapter,
+        ${detailColumns},
+        structured_metadata, featured, search_text, created_at, updated_at, published_at
+       FROM publications WHERE ${clauses.join(" AND ")}
+       ORDER BY publication_date DESC`,
+    )
+    .bind(...values)
+    .all<PublicationRow>();
+  return result.results.map(mapRow);
 }
 
 function mapRow(row: PublicationRow): Publication {
@@ -214,6 +237,7 @@ function mapRow(row: PublicationRow): Publication {
     authors: safeJson<string[]>(row.authors, []),
     chapter: row.chapter ?? undefined,
     featured: Boolean(row.featured),
+    cover: publicationCoverFromStored(row.cover_image_key, row.slug),
     pdfUrl: `/api/publications/${encodeURIComponent(row.slug)}/pdf`,
     pdfFilename: `${row.slug}.pdf`,
     searchKeywords: searchKeywords(row),

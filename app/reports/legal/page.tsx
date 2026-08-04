@@ -10,7 +10,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Legal Reports | M&A Watch",
+  title: "Legal Reports",
   description:
     "Explore accessible student analysis of the legal frameworks, drafting questions and regulatory issues affecting transactions.",
   alternates: { canonical: "/reports/legal" },

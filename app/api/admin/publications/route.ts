@@ -3,7 +3,14 @@ import { apiError, authorizeAdminRequest, normaliseSlug, splitList } from "@/lib
 import { writeAudit } from "@/lib/audit";
 import { d1LikePattern } from "@/lib/d1-query";
 import { createId, database, privateFiles } from "@/lib/platform";
-import { cleanPlainText, inspectPdf, MAX_PUBLICATION_BYTES } from "@/lib/security";
+import {
+  cleanPlainText,
+  inspectPdf,
+  MAX_PUBLICATION_BYTES,
+  MAX_PUBLICATION_MULTIPART_BYTES,
+  normalisePublicationPdfFilename,
+  readBoundedMultipartForm,
+} from "@/lib/security";
 
 const TYPES = new Set(["strategic", "legal", "markets"]);
 
@@ -47,12 +54,13 @@ export async function POST(request: Request) {
   if (!auth.ok) return auth.response;
   await ensureDatabase();
 
-  let form: FormData;
-  try {
-    form = await request.formData();
-  } catch {
-    return apiError("The publication form could not be read.", 400);
-  }
+  const upload = await readBoundedMultipartForm(request, {
+    maxBytes: MAX_PUBLICATION_MULTIPART_BYTES,
+    invalidMessage: "The publication form could not be read.",
+    tooLargeMessage: "The publication upload is too large. PDFs may be up to 30 MB.",
+  });
+  if (!upload.ok) return apiError(upload.error, upload.status);
+  const form = upload.form;
 
   const type = cleanPlainText(form.get("type"), 20).toLowerCase();
   const title = cleanPlainText(form.get("title"), 220);
@@ -83,7 +91,7 @@ export async function POST(request: Request) {
   if (!inspected.ok) return apiError(inspected.error, 422, { fields: { sourcePdf: inspected.error } });
 
   const id = createId("publication");
-  const safeFilename = (source as File).name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-140) || "source.pdf";
+  const safeFilename = normalisePublicationPdfFilename((source as File).name);
   const key = `private/publications/${id}/${crypto.randomUUID()}-${safeFilename}`;
   await privateFiles().put(key, inspected.bytes, {
     httpMetadata: { contentType: "application/pdf" },

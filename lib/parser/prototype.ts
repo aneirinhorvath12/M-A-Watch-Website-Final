@@ -1,3 +1,4 @@
+import { validateArticleBlocks } from "@/lib/article-block-validation";
 import {
   MAX_SOURCE_PDF_BYTES,
   PARSER_CONTRACT_VERSION,
@@ -50,7 +51,7 @@ function warning(
 }
 
 function hasPdfSignature(bytes: Uint8Array | undefined): boolean {
-  if (!bytes || bytes.length < 5) return true;
+  if (!bytes || bytes.length < 5) return false;
   return (
     bytes[0] === 0x25 &&
     bytes[1] === 0x50 &&
@@ -125,9 +126,28 @@ function validateExtraction(
   extraction: PrototypeExtraction,
 ): ParseWarning[] {
   const warnings: ParseWarning[] = [];
+  const pageCountIsValid =
+    Number.isInteger(extraction.metadata.pageCount) && extraction.metadata.pageCount > 0;
+  if (!pageCountIsValid) {
+    warnings.push(
+      warning(input, "INVALID_PAGE_COUNT", "The extractor returned an invalid PDF page count.", {
+        severity: "error",
+        requiresEditorialReview: false,
+      }),
+    );
+  }
+  if (extraction.blocks.length === 0) {
+    warnings.push(
+      warning(input, "NO_USABLE_CONTENT", "The extractor returned no usable article content.", {
+        severity: "error",
+        requiresEditorialReview: false,
+      }),
+    );
+  }
   const blockIds = new Set<string>();
   const hasTitle = extraction.blocks.some(
     ({ block }) =>
+      validateArticleBlocks([block]) &&
       block.type === "heading" &&
       (block.level === 2 || block.level === 3) &&
       block.content.some((part) => part.text.trim().length > 0),
@@ -147,12 +167,73 @@ function validateExtraction(
     if (blockIds.has(parsed.id)) {
       warnings.push(
         warning(input, "DUPLICATE_BLOCK_ID", "Two extracted blocks share an identifier.", {
+          severity: "error",
           sourcePage: parsed.sourcePage,
           blockId: parsed.id,
+          requiresEditorialReview: false,
         }),
       );
     }
     blockIds.add(parsed.id);
+
+    if (
+      !Number.isInteger(parsed.sourcePage) ||
+      parsed.sourcePage < 1 ||
+      (pageCountIsValid && parsed.sourcePage > extraction.metadata.pageCount) ||
+      !Number.isInteger(parsed.orderOnPage) ||
+      parsed.orderOnPage < 0 ||
+      !Number.isFinite(parsed.confidence) ||
+      parsed.confidence < 0 ||
+      parsed.confidence > 1
+    ) {
+      warnings.push(
+        warning(
+          input,
+          "INVALID_BLOCK_COORDINATES",
+          "The extractor returned invalid source coordinates or confidence.",
+          {
+            severity: "error",
+            sourcePage: parsed.sourcePage,
+            blockId: parsed.id,
+            requiresEditorialReview: false,
+          },
+        ),
+      );
+    }
+    if (!validateArticleBlocks([parsed.block])) {
+      const rawBlock = parsed.block as unknown;
+      const isTable =
+        Boolean(rawBlock) &&
+        typeof rawBlock === "object" &&
+        !Array.isArray(rawBlock) &&
+        (rawBlock as { type?: unknown }).type === "table";
+      warnings.push(
+        warning(
+          input,
+          isTable ? "MALFORMED_TABLE" : "INVALID_BLOCK_SHAPE",
+          isTable
+            ? "Table rows do not match a complete accessible table shape."
+            : "The extractor returned an unsafe or malformed block.",
+          {
+            severity: "error",
+            sourcePage: parsed.sourcePage,
+            blockId: parsed.id,
+            requiresEditorialReview: false,
+          },
+        ),
+      );
+      continue;
+    }
+    if (parsed.id !== parsed.block.id) {
+      warnings.push(
+        warning(input, "BLOCK_ID_MISMATCH", "The extracted block identity is inconsistent.", {
+          severity: "error",
+          sourcePage: parsed.sourcePage,
+          blockId: parsed.id,
+          requiresEditorialReview: false,
+        }),
+      );
+    }
 
     if (parsed.confidence < 0.8) {
       warnings.push(
@@ -181,21 +262,6 @@ function validateExtraction(
           { sourcePage: parsed.sourcePage, blockId: parsed.id },
         ),
       );
-    }
-    if (parsed.block.type === "table") {
-      const width = parsed.block.headers.length;
-      const malformed =
-        width === 0 || parsed.block.rows.some((row) => row.length !== width);
-      if (malformed) {
-        warnings.push(
-          warning(
-            input,
-            "MALFORMED_TABLE",
-            "Table rows do not match the header columns; provide an accessible correction.",
-            { sourcePage: parsed.sourcePage, blockId: parsed.id },
-          ),
-        );
-      }
     }
   }
 
@@ -255,6 +321,22 @@ export function runParserPrototype(
           ),
         ];
 
+  const extractionWarnings = validateExtraction(input, extraction);
+  const warnings = [...inputWarnings, ...orderWarnings, ...extractionWarnings];
+  if (warnings.some((item) => item.severity === "error")) {
+    return {
+      contractVersion: PARSER_CONTRACT_VERSION,
+      parserVersion: PROTOTYPE_VERSION,
+      jobId: input.jobId,
+      publicationId: input.publicationId,
+      status: "parse-failed",
+      blocks: [],
+      warnings,
+      metadata: extraction.metadata,
+      completedAt,
+    };
+  }
+
   return {
     contractVersion: PARSER_CONTRACT_VERSION,
     parserVersion: PROTOTYPE_VERSION,
@@ -262,7 +344,7 @@ export function runParserPrototype(
     publicationId: input.publicationId,
     status: "draft",
     blocks,
-    warnings: [...inputWarnings, ...orderWarnings, ...validateExtraction(input, extraction)],
+    warnings,
     metadata: extraction.metadata,
     completedAt,
   };

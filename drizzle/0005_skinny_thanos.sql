@@ -1,0 +1,1 @@
+ALTER TABLE `background_jobs` ADD `claim_token` text;

@@ -15,8 +15,15 @@ import { getPublicationAdmin } from "@/lib/admin-data";
 import { writeAudit } from "@/lib/audit";
 import { createId, database, privateFiles, safeJson } from "@/lib/platform";
 import { publicationSearchText } from "@/lib/publication-search-text";
+import { managedArticleImageKeys } from "@/lib/managed-images";
 import type { ArticleBlock } from "@/lib/publications/types";
-import { inspectPdf, MAX_PUBLICATION_BYTES } from "@/lib/security";
+import {
+  inspectPdf,
+  MAX_PUBLICATION_BYTES,
+  MAX_PUBLICATION_MULTIPART_BYTES,
+  normalisePublicationPdfFilename,
+  readBoundedMultipartForm,
+} from "@/lib/security";
 import { boundedSearchText, utf8ByteLength } from "@/lib/text-limits";
 
 export const dynamic = "force-dynamic";
@@ -144,6 +151,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (requiresValidBody && storedBody.error) return apiError(storedBody.error, 422);
   bodyMissingAlt = storedBody.missingAlt ?? false;
   const bodyChanged = webBody !== existing.web_body;
+  const previousManagedImages = new Set(
+    managedArticleImageKeys(id, parseBody(existing.web_body).blocks ?? []),
+  );
+  const nextManagedImages = new Set(
+    managedArticleImageKeys(id, storedBody.blocks ?? []),
+  );
   if (bodyChanged && (intent === "publish" || intent === "schedule")) {
     return apiError(
       "Save the editorial changes and move the updated report through Review before publishing or scheduling it.",
@@ -220,13 +233,39 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const revisionNumber = bodyChanged
     ? ((await database().prepare("SELECT COALESCE(MAX(revision_number), 0) AS value FROM publication_revisions WHERE publication_id = ?").bind(id).first<{ value: number }>())?.value ?? 0) + 1
     : null;
-  const statements = [
+  const statements: D1PreparedStatement[] = [];
+  if (revisionNumber) {
+    statements.push(
+      database()
+        .prepare(
+          `INSERT INTO publication_revisions
+           (id, publication_id, revision_number, source_pdf_key, web_body, parse_warnings, note, created_by, created_at)
+           SELECT ?, id, ?, source_pdf_key, ?, ?, 'Editorial save', ?, ?
+           FROM publications
+           WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ?`,
+        )
+        .bind(
+          createId("revision"),
+          revisionNumber,
+          webBody,
+          existing.parse_warnings,
+          auth.actor.id,
+          now,
+          id,
+          existing.source_pdf_key,
+          existing.status,
+          existing.updated_at,
+        ),
+    );
+  }
+  statements.push(
     database()
       .prepare(
         `UPDATE publications SET title = ?, slug = ?, summary = ?, publication_date = ?,
           authors = ?, chapter = ?, featured = ?, web_body = ?, status = ?, scheduled_at = ?,
           published_at = ?, published_by = COALESCE(?, published_by), updated_by = ?, updated_at = ?,
-          search_text = ? WHERE id = ?`,
+          search_text = ?
+          WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ?`,
       )
       .bind(
         title, slug, summary, publicationDate, authors, chapter, featured, webBody, status,
@@ -236,20 +275,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           storedBody.blocks ?? [],
         ),
         id,
+        existing.source_pdf_key,
+        existing.status,
+        existing.updated_at,
       ),
-  ];
-  if (revisionNumber) {
-    statements.push(
-      database()
-        .prepare(
-          `INSERT INTO publication_revisions
-           (id, publication_id, revision_number, source_pdf_key, web_body, parse_warnings, note, created_by, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, 'Editorial save', ?, ?)`,
-        )
-        .bind(createId("revision"), id, revisionNumber, existing.source_pdf_key, webBody, existing.parse_warnings, auth.actor.id, now),
+  );
+  const mutationResults = await database().batch(statements);
+  if ((mutationResults.at(-1)?.meta.changes ?? 0) !== 1) {
+    return apiError(
+      "This publication changed while you were editing it. Refresh and review the latest version before trying again.",
+      409,
     );
   }
-  await database().batch(statements);
 
   const action = intent === "save" ? "publication.updated" : `publication.${intent}`;
   await writeAudit({
@@ -259,7 +296,33 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     entityId: id,
     metadata: { fromStatus: existing.status, toStatus: status, revisionCreated: Boolean(revisionNumber) },
   });
+  if (bodyChanged) {
+    await deleteUnreferencedManagedImages(
+      [...previousManagedImages].filter((key) => !nextManagedImages.has(key)),
+    );
+  }
   return Response.json({ ok: true, message: intent === "save" ? "Publication saved." : `Publication moved to ${status.replace(/_/g, " ")}.` });
+}
+
+async function deleteUnreferencedManagedImages(keys: readonly string[]): Promise<void> {
+  for (const key of new Set(keys)) {
+    const assetId = key.split("/").at(-1);
+    if (!assetId) continue;
+    try {
+      const referenced = await database()
+        .prepare(
+          `SELECT 1 AS present FROM publications WHERE instr(web_body, ?) > 0
+           UNION ALL
+           SELECT 1 AS present FROM publication_revisions WHERE instr(web_body, ?) > 0
+           LIMIT 1`,
+        )
+        .bind(assetId, assetId)
+        .first<{ present: number }>();
+      if (!referenced) await privateFiles().delete(key);
+    } catch {
+      console.error("Unable to clean up an unreferenced publication image.");
+    }
+  }
 }
 
 async function replaceSource(
@@ -267,19 +330,20 @@ async function replaceSource(
   existing: NonNullable<Awaited<ReturnType<typeof getPublicationAdmin>>>,
   actorId: string,
 ): Promise<Response> {
-  let form: FormData;
-  try {
-    form = await request.formData();
-  } catch {
-    return apiError("The replacement upload could not be read.", 400);
-  }
+  const upload = await readBoundedMultipartForm(request, {
+    maxBytes: MAX_PUBLICATION_MULTIPART_BYTES,
+    invalidMessage: "The replacement upload could not be read.",
+    tooLargeMessage: "The replacement upload is too large. PDFs may be up to 30 MB.",
+  });
+  if (!upload.ok) return apiError(upload.error, upload.status);
+  const form = upload.form;
   if (form.get("confirmReplace") !== "true") return apiError("Confirm that the source replacement should create a new revision.", 422);
   const source = form.get("sourcePdf");
   if (!(source instanceof File)) return apiError("Choose a replacement PDF.", 422);
   const inspected = await inspectPdf(source, MAX_PUBLICATION_BYTES);
   if (!inspected.ok) return apiError(inspected.error, 422);
 
-  const safeFilename = source.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-140) || "source.pdf";
+  const safeFilename = normalisePublicationPdfFilename(source.name);
   const key = `private/publications/${existing.id}/${crypto.randomUUID()}-${safeFilename}`;
   await privateFiles().put(key, inspected.bytes, {
     httpMetadata: { contentType: "application/pdf" },
@@ -290,22 +354,66 @@ async function replaceSource(
   const nextRevision = ((await database().prepare("SELECT COALESCE(MAX(revision_number), 0) AS value FROM publication_revisions WHERE publication_id = ?").bind(existing.id).first<{ value: number }>())?.value ?? 0) + 1;
   const warning = existing.type === "markets" ? [] : ["Replacement extraction is waiting for the source file security scan. Prior editorial content has been preserved."];
   try {
-    await database().batch([
+    const scanJobId = createId("job");
+    const replacementResults = await database().batch([
       database().prepare(
         `INSERT INTO publication_revisions
          (id, publication_id, revision_number, source_pdf_key, web_body, parse_warnings, note, created_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'Source replaced; prior approved content preserved', ?, ?)`,
-      ).bind(createId("revision"), existing.id, nextRevision, existing.source_pdf_key, existing.web_body, existing.parse_warnings, actorId, now),
+         SELECT ?, id, ?, source_pdf_key, web_body, parse_warnings,
+           'Source replaced; prior approved content preserved', ?, ?
+         FROM publications
+         WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ?`,
+      ).bind(
+        createId("revision"),
+        nextRevision,
+        actorId,
+        now,
+        existing.id,
+        existing.source_pdf_key,
+        existing.status,
+        existing.updated_at,
+      ),
       database().prepare(
         `UPDATE publications SET source_pdf_key = ?, status = 'uploaded', parse_warnings = ?,
-          parse_error = NULL, updated_by = ?, updated_at = ? WHERE id = ?`,
-      ).bind(key, JSON.stringify(warning), actorId, now, existing.id),
+          parse_error = NULL, updated_by = ?, updated_at = ?
+          WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ?`,
+      ).bind(
+        key,
+        JSON.stringify(warning),
+        actorId,
+        now,
+        existing.id,
+        existing.source_pdf_key,
+        existing.status,
+        existing.updated_at,
+      ),
       database().prepare(
         `INSERT INTO background_jobs
          (id, type, status, payload, attempts, run_after, created_at, updated_at)
-         VALUES (?, 'file_scan', 'queued', ?, 0, ?, ?, ?)`,
-      ).bind(createId("job"), JSON.stringify({ publicationId: existing.id, key, parseAfterScan: existing.type !== "markets", replacement: true }), now, now, now),
+         SELECT ?, 'file_scan', 'queued', ?, 0, ?, ?, ?
+         FROM publications
+         WHERE id = ? AND source_pdf_key = ? AND status = 'uploaded' AND updated_at = ?`,
+      ).bind(
+        scanJobId,
+        JSON.stringify({ publicationId: existing.id, key, parseAfterScan: existing.type !== "markets", replacement: true }),
+        now,
+        now,
+        now,
+        existing.id,
+        key,
+        now,
+      ),
     ]);
+    if (
+      (replacementResults[1]?.meta.changes ?? 0) !== 1 ||
+      (replacementResults[2]?.meta.changes ?? 0) !== 1
+    ) {
+      await privateFiles().delete(key);
+      return apiError(
+        "This publication changed while the replacement was uploading. Refresh before trying again.",
+        409,
+      );
+    }
   } catch (cause) {
     await privateFiles().delete(key);
     throw cause;

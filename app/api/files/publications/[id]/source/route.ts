@@ -36,7 +36,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       "Cache-Control": "private, no-store, max-age=0",
       "Content-Disposition": `inline; filename="${filename(publication.slug)}"`,
       "Content-Length": String(object.size),
-      "Content-Security-Policy": "default-src 'none'; sandbox",
+      "Content-Security-Policy":
+        "base-uri 'none'; object-src 'none'; frame-ancestors 'self'; form-action 'none'",
       "Content-Type": "application/pdf",
       "X-Content-Type-Options": "nosniff",
     },

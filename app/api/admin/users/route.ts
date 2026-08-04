@@ -1,8 +1,10 @@
+import { env } from "cloudflare:workers";
 import { ensureDatabase } from "@/db/bootstrap";
 import { apiError, authorizeAdminRequest, readJsonObject, stringValue } from "@/lib/admin-api";
 import { writeAudit } from "@/lib/audit";
 import { queueEmail } from "@/lib/email-queue";
 import { createId, database, normaliseEmail } from "@/lib/platform";
+import { secureAdminLoginUrl } from "@/lib/recruitment-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +42,13 @@ export async function POST(request: Request) {
   const id = createId("user");
   const now = Date.now();
   const expiresAt = now + 7 * 24 * 60 * 60 * 1000;
-  const invitationUrl = new URL("/admin/login", request.url).toString();
+  const invitationUrl = secureAdminLoginUrl(env.NEXT_PUBLIC_SITE_URL);
+  if (!invitationUrl) {
+    return apiError(
+      "Administrative invitations require the canonical HTTPS site URL.",
+      503,
+    );
+  }
   await database().prepare(
     `INSERT INTO admin_users
      (id, name, email, role, status, invitation_token_hash, invitation_expires_at, created_at, updated_at)

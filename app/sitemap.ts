@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://mawatch.org";
   const now = new Date();
-  const staticPages = ["", "/reports/strategic", "/reports/legal", "/markets", "/apply", "/team", "/info", "/privacy", "/terms", "/accessibility"];
+  const staticPages = ["", "/reports", "/reports/strategic", "/reports/legal", "/markets", "/apply", "/team", "/info", "/privacy", "/terms", "/accessibility"];
 
   return [
     ...staticPages.map((path) => ({

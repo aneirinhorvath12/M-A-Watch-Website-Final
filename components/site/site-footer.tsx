@@ -55,6 +55,7 @@ export function SiteFooter({
               width={36}
               height={39}
               alt=""
+              unoptimized
             />
             <span>M&amp;A Watch</span>
           </Link>

@@ -88,6 +88,7 @@ export function SiteHeader() {
               height={39}
               alt=""
               priority
+              unoptimized
             />
             <span>M&amp;A Watch</span>
           </Link>

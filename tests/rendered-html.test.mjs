@@ -59,6 +59,9 @@ test("server-renders the branded home page", async () => {
   assert.match(html, /<title>Student-led deal intelligence \| M&amp;A Watch<\/title>/i);
   assert.match(html, /The deals that shape markets/i);
   assert.match(html, /Explore our research/i);
+  assert.match(html, /src="\/brand\/logo-black-mark\.png"/i);
+  assert.match(html, /src="\/brand\/logo-white-mark\.png"/i);
+  assert.doesNotMatch(html, /_vinext\/image\?[^"']*logo-(?:black|white)-mark/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Starter Project/i);
 });
 

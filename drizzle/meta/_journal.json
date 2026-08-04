@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1785846825229,
+      "tag": "0000_solid_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1785846971155,
+      "tag": "0001_shiny_next_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785851889028,
+      "tag": "0002_curved_daredevil",
+      "breakpoints": true
+    }
+  ]
+}

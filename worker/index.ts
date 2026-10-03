@@ -43,10 +43,10 @@ const worker = {
     // Representative fixture PDFs are useful for explicit demo deployments,
     // but managed editorial mode must not expose them merely because the
     // catalogue stopped linking to their static paths.
-    if (
-      url.pathname.startsWith("/sample-reports/") &&
-      resolvePublicationContentMode(env.PUBLICATION_CONTENT_MODE) !== "demo"
-    ) {
+    if (url.pathname.startsWith("/sample-reports/")) {
+      if (resolvePublicationContentMode(env.PUBLICATION_CONTENT_MODE) === "demo") {
+        return applyResponseSecurity(await env.ASSETS.fetch(request), url);
+      }
       return applyResponseSecurity(
         new Response("Not found", {
           status: 404,

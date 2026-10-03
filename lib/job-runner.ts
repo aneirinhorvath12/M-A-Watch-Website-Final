@@ -383,7 +383,7 @@ async function publishDueItems(now: number, limit: number): Promise<number> {
         )
         .bind(auditId, now, row.id, now, row.id, now),
     ]);
-    if ((results[0].meta.changes ?? 0) === 1) published += 1;
+    if ((results[0].meta.changes ?? 0) > 0) published += 1;
   }
   return published;
 }
@@ -1627,7 +1627,7 @@ async function finishPublicationParse(
               claimToken,
             )
             .run();
-    appliedToCurrentDraft = (update.meta.changes ?? 0) === 1;
+    appliedToCurrentDraft = (update.meta.changes ?? 0) > 0;
   }
 
   let workflowStateUpdated = appliedToCurrentDraft;
@@ -1681,7 +1681,7 @@ async function finishPublicationParse(
         claimToken,
       )
       .run();
-    workflowStateUpdated = (workflowUpdate.meta.changes ?? 0) === 1;
+    workflowStateUpdated = (workflowUpdate.meta.changes ?? 0) > 0;
   }
 
   const revisionId = `revision_parse_${job.id}`;

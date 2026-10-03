@@ -7,6 +7,8 @@ import type {
   ReferenceEntry,
 } from "@/lib/publications/types";
 import { PublicationBodyPreview } from "./PublicationBodyPreview";
+import { useSavedArticleBody } from "./ActionForm";
+import { usePublicationEditSession } from "./PublicationEditSession";
 import styles from "./admin.module.css";
 
 type BlockType = ArticleBlock["type"];
@@ -292,9 +294,17 @@ function ReferenceEditor({ id, index, value, removable, onChange, onRemove }: {
   );
 }
 
+export function PublicationArticleEditor({ initialValue, publicationId }: { initialValue: string; publicationId: string }) {
+  const session = usePublicationEditSession();
+  return <StructuredBlockEditor key={session?.bodyReset?.key ?? 0} initialValue={session?.bodyReset?.value ?? initialValue} publicationId={publicationId} />;
+}
+
 export function StructuredBlockEditor({ initialValue, publicationId }: { initialValue: string; publicationId: string }) {
   const incoming = useMemo(() => parseBlocks(initialValue), [initialValue]);
-  const [savedJson] = useState(() => JSON.stringify(incoming));
+  const [initialJson] = useState(() => JSON.stringify(incoming));
+  const savedJson = useSavedArticleBody() ?? initialJson;
+  const session = usePublicationEditSession();
+  const setArticleDirty = session?.setArticleDirty;
   const [blocks, setBlocks] = useState<ArticleBlock[]>(incoming);
   const [past, setPast] = useState<ArticleBlock[][]>([]);
   const [future, setFuture] = useState<ArticleBlock[][]>([]);
@@ -302,6 +312,10 @@ export function StructuredBlockEditor({ initialValue, publicationId }: { initial
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
   const currentJson = JSON.stringify(blocks);
   const dirty = currentJson !== savedJson;
+  useEffect(() => {
+    setArticleDirty?.(dirty);
+    return () => setArticleDirty?.(false);
+  }, [dirty, setArticleDirty]);
 
   useEffect(() => {
     if (!dirty) return;

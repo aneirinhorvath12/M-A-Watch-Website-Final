@@ -1,3 +1,4 @@
+import { verifyDatabaseSchema } from "@/db/bootstrap";
 import { env } from "cloudflare:workers";
 import {
   missingProductionServiceConfiguration,
@@ -27,10 +28,7 @@ async function readinessResponse(includeBody = true): Promise<Response> {
         throw new Error("Production service configuration is incomplete");
       }
     }
-    const databaseCheck = await bindings.DB.prepare("SELECT 1 AS ready").first<{
-      ready: number;
-    }>();
-    if (databaseCheck?.ready !== 1) throw new Error("Database check failed");
+    await verifyDatabaseSchema(bindings.DB);
 
     // A missing sentinel is expected. The HEAD still verifies that the private
     // bucket binding is reachable without writing an object on every probe.

@@ -61,6 +61,7 @@ export const publications = sqliteTable(
     chapter: text("chapter"),
     coverImageKey: text("cover_image_key"),
     sourcePdfKey: text("source_pdf_key"),
+    editVersion: integer("edit_version").notNull().default(0),
     webBody: text("web_body").notNull().default("[]"),
     parserVersion: text("parser_version"),
     parseWarnings: text("parse_warnings").notNull().default("[]"),

@@ -14,14 +14,23 @@ export default async function ApplicantsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
+  const page = Math.max(1, Math.min(100_000, Number.parseInt(one(params.page), 10) || 1));
   const filters = {
     q: one(params.q), status: one(params.status), division: one(params.division),
     from: one(params.from), to: one(params.to), sort: one(params.sort) || "newest", limit: 100,
   };
-  const applicants = await listApplicants({ ...filters, includeDeletionPending: true });
+  const matches = await listApplicants({ ...filters, limit: 101, offset: (page - 1) * 100, includeDeletionPending: true });
+  const applicants = matches.slice(0, 100);
+  const hasNext = matches.length > 100;
   const pendingDeletionCount = applicants.filter((item) => item.deletion_requested_at).length;
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) if (typeof value === "string" && value) query.set(key, value);
+
+  function pageHref(next: number) {
+    const parameters = new URLSearchParams(query);
+    parameters.set("page", String(next));
+    return `/admin/applicants?${parameters}`;
+  }
 
   return (
     <>
@@ -63,7 +72,12 @@ export default async function ApplicantsPage({
           </div>
         ) : <EmptyState title="No applicants match">No applicant records match the current filters. Clear the filters or wait for a new submission.</EmptyState>}
       </section>
-      {applicants.length === 100 ? <div className={styles.notice}>Showing the first 100 matching records. Narrow the filters before exporting a larger working set.</div> : null}
+      <nav className={styles.buttonRow} aria-label="Applicant pages">
+        {page > 1 ? <Link className={styles.buttonSecondary} href={pageHref(page - 1)}>Previous page</Link> : null}
+        <span>Page {page}</span>
+        {hasNext ? <Link className={styles.buttonSecondary} href={pageHref(page + 1)}>Next page</Link> : null}
+      </nav>
+      <p className={styles.hint}>CSV exports include all matching records, up to 10,000. Larger selections must be narrowed before export.</p>
     </>
   );
 }

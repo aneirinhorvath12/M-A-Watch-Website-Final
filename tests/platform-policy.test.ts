@@ -121,9 +121,10 @@ test("database readiness requires the migration-owned security fields", () => {
     sql:
       name === "background_jobs"
         ? "CREATE TABLE background_jobs (id TEXT, claim_token TEXT)"
-        : `CREATE TABLE ${name} (id TEXT)`,
+        : name === "publications" ? "CREATE TABLE publications (id TEXT, edit_version INTEGER)" : `CREATE TABLE ${name} (id TEXT)`,
   }));
   definitions.push(
+    { name: "publications_edit_version", sql: "CREATE TRIGGER publications_edit_version AFTER UPDATE ON publications BEGIN UPDATE publications SET edit_version = OLD.edit_version + 1; END" },
     {
       name: "analytics_daily",
       sql: "CREATE TABLE analytics_daily (day TEXT, event TEXT, dimension_name TEXT, dimension_value TEXT, count INTEGER, PRIMARY KEY (day, event, dimension_name, dimension_value))",

@@ -1,8 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { createContext, useContext, useId, useState, type FormEvent, type ReactNode } from "react";
+import { usePublicationEditSession } from "./PublicationEditSession";
 import styles from "./admin.module.css";
+
+const SavedBodyContext = createContext<string | undefined>(undefined);
+export const useSavedArticleBody = () => useContext(SavedBodyContext);
 
 type ActionFormProps = {
   action: string;
@@ -39,6 +43,8 @@ export function ActionForm({
   onSuccessMessage = "Saved.",
 }: ActionFormProps) {
   const router = useRouter();
+  const session = usePublicationEditSession();
+  const [savedBody, setSavedBody] = useState<{ value: string; resetKey: number }>();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -46,13 +52,19 @@ export function ActionForm({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending) return;
+    if (pending || session?.busy) return;
     if (confirmation && !window.confirm(confirmation)) return;
+    const formData = new FormData(event.currentTarget);
+    if (session?.articleDirty && formData.get("intent") !== "save" && !action.endsWith("/cover")) {
+      setError("Save your article changes before changing its workflow or applying a revision.");
+      return;
+    }
+    if (session && !session.begin()) return;
+    if (session) formData.set("expectedVersion", String(session.version));
     setPending(true);
     setMessage("");
     setError("");
 
-    const formData = new FormData(event.currentTarget);
     const init: RequestInit = { method, headers: { Accept: "application/json" } };
     if (mode === "form-data") {
       init.body = formData;
@@ -72,13 +84,20 @@ export function ActionForm({
         error?: string;
         redirect?: string;
         message?: string;
+        version?: number;
+        resetBody?: string;
+        webBody?: string;
       };
       if (!response.ok) throw new Error(result.error || "The change could not be saved.");
+      const submittedBody = formData.get("webBody");
+      if (typeof submittedBody === "string") setSavedBody({ value: result.webBody ?? submittedBody, resetKey: session?.bodyReset?.key ?? 0 });
+      session?.finish(result);
       setMessage(result.message || onSuccessMessage);
       const target = result.redirect || redirectTo;
       if (target) router.push(target);
       router.refresh();
     } catch (cause) {
+      session?.finish();
       setError(cause instanceof Error ? cause.message : "The change could not be saved.");
     } finally {
       setPending(false);
@@ -87,8 +106,10 @@ export function ActionForm({
 
   return (
     <form aria-busy={pending} aria-describedby={statusId} className={className} onSubmit={submit}>
-      {children}
-      <button type="submit" className={buttonClass(buttonTone)} disabled={pending}>
+      <SavedBodyContext.Provider value={savedBody?.resetKey === (session?.bodyReset?.key ?? 0) ? savedBody.value : undefined}>
+        <fieldset disabled={pending || session?.busy} className={styles.actionFields}>{children}</fieldset>
+      </SavedBodyContext.Provider>
+      <button type="submit" className={buttonClass(buttonTone)} disabled={pending || session?.busy}>
         {pending ? pendingLabel : submitLabel}
       </button>
       <div

@@ -29,6 +29,7 @@ export default async function PublicationsAdminPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
+  const page = Math.max(1, Math.min(100_000, Number.parseInt(one(params.page), 10) || 1));
   const q = one(params.q).trim();
   const type = one(params.type);
   const status = one(params.status);
@@ -48,9 +49,15 @@ export default async function PublicationsAdminPage({
           AND json_extract(jobs.payload, '$.publicationId') = publications.id
         ORDER BY jobs.created_at DESC LIMIT 1) AS scan_status
      FROM publications ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
-     ORDER BY updated_at DESC LIMIT 200`,
+     ORDER BY updated_at DESC, id ASC LIMIT 201 OFFSET ${(page - 1) * 200}`,
   );
   const result = bindings.length ? await statement.bind(...bindings).all<Row>() : await statement.all<Row>();
+
+  const hasNext = result.results.length > 200;
+  const publications = result.results.slice(0, 200);
+  function pageHref(next: number) {
+    return `/admin/publications?${new URLSearchParams({ q, type, status, page: String(next) })}`;
+  }
 
   return (
     <>
@@ -85,12 +92,12 @@ export default async function PublicationsAdminPage({
       </form>
 
       <section className={styles.panel} aria-label="Publication records">
-        {result.results.length ? (
+        {publications.length ? (
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead><tr><th>Publication</th><th>Type</th><th>Status</th><th>Publication date</th><th>Updated</th><th>Attention</th><th>Action</th></tr></thead>
               <tbody>
-                {result.results.map((item) => {
+                {publications.map((item) => {
                   const warningCount = actionablePublicationWarnings(
                     item.parse_warnings,
                   ).length;
@@ -122,6 +129,11 @@ export default async function PublicationsAdminPage({
           </EmptyState>
         )}
       </section>
+      <nav className={styles.buttonRow} aria-label="Publication pages">
+        {page > 1 ? <Link className={styles.buttonSecondary} href={pageHref(page - 1)}>Previous page</Link> : null}
+        <span>Page {page}</span>
+        {hasNext ? <Link className={styles.buttonSecondary} href={pageHref(page + 1)}>Next page</Link> : null}
+      </nav>
     </>
   );
 }

@@ -4,8 +4,9 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { PageHeader, Panel, StatusBadge, adminStyles as styles } from "@/components/admin/AdminUI";
+import { PublicationEditSession } from "@/components/admin/PublicationEditSession";
 import { PublicationJobStatus } from "@/components/admin/PublicationJobStatus";
-import { StructuredBlockEditor } from "@/components/admin/StructuredBlockEditor";
+import { PublicationArticleEditor } from "@/components/admin/StructuredBlockEditor";
 import { formatAdminDate, getPublicationAdmin, titleCaseStatus } from "@/lib/admin-data";
 import { publicationCoverFromStored } from "@/lib/managed-images";
 import { resolveMalwareProvider } from "@/lib/malware-provider";
@@ -85,7 +86,7 @@ export default async function PublicationReviewPage({ params }: { params: Promis
       : ["review", "scheduled"].includes(publication.status));
 
   return (
-    <>
+    <PublicationEditSession key={publication.id} version={publication.edit_version}>
       <PageHeader
         eyebrow={`${titleCaseStatus(publication.type)} · ${titleCaseStatus(publication.status)}`}
         title={publication.title}
@@ -249,7 +250,7 @@ export default async function PublicationReviewPage({ params }: { params: Promis
           <div className={styles.panelBody}>
             <ActionForm action={`/api/admin/publications/${id}`} method="PATCH" submitLabel="Save article revision">
               <input type="hidden" name="intent" value="save" />
-              <StructuredBlockEditor key={publication.updated_at} initialValue={publication.web_body} publicationId={publication.id} />
+              <PublicationArticleEditor initialValue={publication.web_body} publicationId={publication.id} />
               <span className={styles.hint}>Add, delete and reorder controlled blocks; edit formatting, links, tables, captions and alternative text; and use the desktop/mobile live preview. Save never publishes.</span>
             </ActionForm>
           </div>
@@ -318,6 +319,6 @@ export default async function PublicationReviewPage({ params }: { params: Promis
           </div>
         )}
       </Panel>
-    </>
+    </PublicationEditSession>
   );
 }

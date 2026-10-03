@@ -1,3 +1,4 @@
+import { matchesPublicationVersion, PUBLICATION_CONFLICT } from "@/lib/publication-edit-version";
 import { ensureDatabase } from "@/db/bootstrap";
 import {
   apiError,
@@ -117,6 +118,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const payload = await readJsonObject(request);
   if (!payload) return apiError("The publication update could not be read.", 400);
+  if (!matchesPublicationVersion(payload.expectedVersion, existing.edit_version)) return apiError(PUBLICATION_CONFLICT, 409);
   const intent = stringValue(payload.intent, 30) || "save";
 
   let title = existing.title;
@@ -165,7 +167,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const nextManagedImages = new Set(
     managedArticleImageKeys(id, storedBody.blocks ?? []),
   );
-  if (bodyChanged && (intent === "publish" || intent === "schedule")) {
+  if (bodyChanged && intent !== "save") {
     return apiError(
       "Save the editorial changes and move the updated report through Review before publishing or scheduling it.",
       409,
@@ -173,10 +175,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   if (bodyChanged && existing.status === "published" && intent === "save") {
     return apiError("Unpublish this report to Draft before changing its public article body.", 409);
-  }
-  if (bodyChanged && existing.status === "scheduled" && existing.type !== "markets") {
-    if (safeJson<unknown[]>(webBody, []).length === 0) return apiError("A scheduled report cannot have an empty article body.", 422);
-    if (bodyMissingAlt) return apiError("Every report image needs alternative text while publication is scheduled.", 422);
   }
 
   const duplicate = await database()
@@ -188,6 +186,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   let status = existing.status;
   let scheduledAt = existing.scheduled_at;
   let publishedAt = existing.published_at;
+  const reviewInvalidated = bodyChanged && ["review", "scheduled"].includes(existing.status);
+  if (reviewInvalidated) {
+    status = "draft";
+    scheduledAt = null;
+    publishedAt = null;
+  }
   let publishedBy: string | null = null;
   const now = Date.now();
   const warningsBeforeAction = actionablePublicationWarnings(
@@ -321,7 +325,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
            (id, publication_id, revision_number, source_pdf_key, web_body, parse_warnings, note, created_by, created_at)
            SELECT ?, id, ?, source_pdf_key, ?, ?, ?, ?, ?
            FROM publications
-           WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ?`,
+           WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ? AND edit_version = ?`,
         )
         .bind(
           createId("revision"),
@@ -339,6 +343,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           existing.source_pdf_key,
           existing.status,
           existing.updated_at,
+          existing.edit_version,
         ),
     );
   }
@@ -349,7 +354,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           authors = ?, chapter = ?, featured = ?, web_body = ?, status = ?, scheduled_at = ?,
           published_at = ?, published_by = COALESCE(?, published_by), updated_by = ?, updated_at = ?,
           search_text = ?, parse_warnings = ?, parse_error = ?
-          WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ?`,
+          WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ? AND edit_version = ?`,
       )
       .bind(
         title, slug, summary, publicationDate, authors, chapter, featured, webBody, status,
@@ -364,10 +369,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         existing.source_pdf_key,
         existing.status,
         existing.updated_at,
+        existing.edit_version,
       ),
   );
   const mutationResults = await database().batch(statements);
-  if ((mutationResults.at(-1)?.meta.changes ?? 0) !== 1) {
+  // D1 counts the version trigger write too; zero is the stale-write signal.
+  if ((mutationResults.at(-1)?.meta.changes ?? 0) < 1) {
     return apiError(
       "This publication changed while you were editing it. Refresh and review the latest version before trying again.",
       409,
@@ -387,6 +394,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       acknowledgedWarningCount,
       parserFailureRecovered,
       automaticParsingBypassed,
+      reviewInvalidated,
     },
   });
   if (bodyChanged) {
@@ -396,7 +404,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   }
   const message =
     intent === "save"
-      ? "Publication saved."
+      ? reviewInvalidated
+        ? "Article saved as Draft. Its previous review and schedule were cleared; send it to Review again before publishing."
+        : "Publication saved."
       : intent === "manual_draft"
         ? "Manual draft created. Edit the article and review any retained parser warnings."
         : intent === "acknowledge_warnings"
@@ -404,7 +414,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           : intent === "restore"
             ? "Publication restored to draft."
             : `Publication moved to ${status.replace(/_/g, " ")}.`;
-  return Response.json({ ok: true, message });
+  return Response.json({ ok: true, message, version: existing.edit_version + 1, ...(parsedBody.value !== undefined ? { webBody } : {}) });
 }
 
 async function deleteUnreferencedManagedImages(keys: readonly string[]): Promise<void> {
@@ -440,6 +450,7 @@ async function replaceSource(
   });
   if (!upload.ok) return apiError(upload.error, upload.status);
   const form = upload.form;
+  if (!matchesPublicationVersion(form.get("expectedVersion"), existing.edit_version)) return apiError(PUBLICATION_CONFLICT, 409);
   if (form.get("confirmReplace") !== "true") return apiError("Confirm that the source replacement should create a new revision.", 422);
   const source = form.get("sourcePdf");
   if (!(source instanceof File)) return apiError("Choose a replacement PDF.", 422);
@@ -465,7 +476,7 @@ async function replaceSource(
          SELECT ?, id, ?, source_pdf_key, web_body, parse_warnings,
            'Source replaced; prior approved content preserved', ?, ?
          FROM publications
-         WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ?`,
+         WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ? AND edit_version = ?`,
       ).bind(
         createId("revision"),
         nextRevision,
@@ -475,11 +486,12 @@ async function replaceSource(
         existing.source_pdf_key,
         existing.status,
         existing.updated_at,
+        existing.edit_version,
       ),
       database().prepare(
         `UPDATE publications SET source_pdf_key = ?, status = 'uploaded', parse_warnings = ?,
-          parse_error = NULL, updated_by = ?, updated_at = ?
-          WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ?`,
+          parse_error = NULL, scheduled_at = NULL, published_at = NULL, updated_by = ?, updated_at = ?
+          WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ? AND edit_version = ?`,
       ).bind(
         key,
         JSON.stringify(warning),
@@ -489,6 +501,7 @@ async function replaceSource(
         existing.source_pdf_key,
         existing.status,
         existing.updated_at,
+        existing.edit_version,
       ),
       database().prepare(
         `INSERT INTO background_jobs
@@ -508,8 +521,8 @@ async function replaceSource(
       ),
     ]);
     if (
-      (replacementResults[1]?.meta.changes ?? 0) !== 1 ||
-      (replacementResults[2]?.meta.changes ?? 0) !== 1
+      (replacementResults[1]?.meta.changes ?? 0) < 1 ||
+      (replacementResults[2]?.meta.changes ?? 0) < 1
     ) {
       await privateFiles().delete(key);
       return apiError(
@@ -528,5 +541,5 @@ async function replaceSource(
     entityId: existing.id,
     metadata: { revisionNumber: nextRevision, scanStatus: "quarantined" },
   });
-  return Response.json({ ok: true, message: "Replacement stored. Security scan queued; prior editorial content was preserved." });
+  return Response.json({ ok: true, version: existing.edit_version + 1, message: "Replacement stored. Security scan queued; prior editorial content was preserved." });
 }

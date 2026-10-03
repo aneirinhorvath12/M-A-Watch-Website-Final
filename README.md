@@ -49,10 +49,17 @@ npm run lint
 npm test
 npm run build
 npm run test:rendered
+npm run test:runtime
 ```
 
-`npm run verify` runs that complete sequence. The rendered tests expect a fresh
-`dist/` from `npm run build`.
+`npm run verify` runs that complete sequence, building with a fixed public URL
+for deterministic metadata assertions. Rendered and runtime tests expect a fresh
+`dist/`. Runtime tests start loopback-only Wrangler instances and temporary D1/R2
+storage, then remove their test data. They never use production credentials.
+
+Before deploying the launch-hardening changes, read
+[docs/launch-hardening.md](docs/launch-hardening.md), especially the migration's
+review/schedule reset and the remaining live-environment checks.
 
 ## Required runtime decisions
 

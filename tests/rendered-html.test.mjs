@@ -155,8 +155,9 @@ function mockD1(store) {
     name,
     sql: name === "background_jobs"
       ? "CREATE TABLE background_jobs (id TEXT, claim_token TEXT)"
-      : `CREATE TABLE ${name} (id TEXT)`,
+      : name === "publications" ? "CREATE TABLE publications (id TEXT, edit_version INTEGER)" : `CREATE TABLE ${name} (id TEXT)`,
   }));
+  schema.push({ name: "publications_edit_version", sql: "CREATE TRIGGER publications_edit_version AFTER UPDATE ON publications BEGIN UPDATE publications SET edit_version = OLD.edit_version + 1; END" });
   schema.push({
     name: "analytics_daily",
     sql: "CREATE TABLE analytics_daily (day TEXT, event TEXT, dimension_name TEXT, dimension_value TEXT, count INTEGER, PRIMARY KEY (day, event, dimension_name, dimension_value))",
@@ -430,6 +431,7 @@ function securityD1({
   modelPublicationParserFailure = false,
   maintenanceLastCompletedAt = Date.now(),
 } = {}) {
+  for (const publication of publications) publication.edit_version ??= 0;
   const applicantVisibleAt = (applicant, cutoff) => {
     const submittedAt = applicant.submitted_at ?? Date.now();
     const deadline = applicant.retention_expires_at ?? submittedAt + 180 * 24 * 60 * 60 * 1000;
@@ -459,8 +461,9 @@ function securityD1({
     name,
     sql: name === "background_jobs"
       ? "CREATE TABLE background_jobs (id TEXT, claim_token TEXT)"
-      : `CREATE TABLE ${name} (id TEXT)`,
+      : name === "publications" ? "CREATE TABLE publications (id TEXT, edit_version INTEGER)" : `CREATE TABLE ${name} (id TEXT)`,
   }));
+  schema.push({ name: "publications_edit_version", sql: "CREATE TRIGGER publications_edit_version AFTER UPDATE ON publications BEGIN UPDATE publications SET edit_version = OLD.edit_version + 1; END" });
   schema.push({
     name: "analytics_daily",
     sql: "CREATE TABLE analytics_daily (day TEXT, event TEXT, dimension_name TEXT, dimension_value TEXT, count INTEGER, PRIMARY KEY (day, event, dimension_name, dimension_value))",
@@ -1014,7 +1017,7 @@ test("an admin can recover a parser failure and acknowledge retained warnings", 
     identity: admin,
     method: "PATCH",
     headers: mutationHeaders,
-    body: JSON.stringify({ intent: "manual_draft" }),
+    body: JSON.stringify({ intent: "manual_draft", expectedVersion: 0 }),
   });
   assert.equal(recovery.status, 200);
   const recoveryUpdate = recoveryD1.calls.find(
@@ -1040,7 +1043,7 @@ test("an admin can recover a parser failure and acknowledge retained warnings", 
     identity: admin,
     method: "PATCH",
     headers: mutationHeaders,
-    body: JSON.stringify({ intent: "manual_draft" }),
+    body: JSON.stringify({ intent: "manual_draft", expectedVersion: 0 }),
   });
   assert.equal(bypass.status, 200);
   const bypassUpdate = bypassD1.calls.find(
@@ -1063,7 +1066,7 @@ test("an admin can recover a parser failure and acknowledge retained warnings", 
     identity: admin,
     method: "PATCH",
     headers: mutationHeaders,
-    body: JSON.stringify({ intent: "acknowledge_warnings" }),
+    body: JSON.stringify({ intent: "acknowledge_warnings", expectedVersion: 0 }),
   });
   assert.equal(acknowledged.status, 200);
   const acknowledgeUpdate = acknowledgeD1.calls.find(
@@ -1168,7 +1171,7 @@ test("publication publish and source replacement reject a stale editorial snapsh
     identity: admin,
     method: "PATCH",
     headers: { ...mutationHeaders, "content-type": "application/json" },
-    body: JSON.stringify({ intent: "publish" }),
+    body: JSON.stringify({ intent: "publish", expectedVersion: 0 }),
   });
   assert.equal(publish.status, 409);
   const guardedPublish = d1.calls.find(
@@ -1181,6 +1184,7 @@ test("publication publish and source replacement reject a stale editorial snapsh
 
   const replacementForm = new FormData();
   replacementForm.set("confirmReplace", "true");
+  replacementForm.set("expectedVersion", "0");
   replacementForm.set(
     "sourcePdf",
     new File(["%PDF-1.7 replacement"], "replacement.pdf", {
@@ -1870,6 +1874,7 @@ test("Admin image uploads derive dimensions from bytes for article, cover and In
     form.set(field, new File([png], "managed.png", { type: "image/png" }));
     form.set("width", "8192");
     form.set("height", "8192");
+    form.set("expectedVersion", "0");
     if (includeAlt) form.set("alt", "Students reviewing a transaction report");
     const response = await fetchSecurityRoute(path, {
       d1,

@@ -23,18 +23,17 @@ export async function ensureDatabase(): Promise<void> {
   }
 }
 
-async function verifyMigratedSchemaAndSeed(): Promise<void> {
-  const db = env.DB;
+export async function verifyDatabaseSchema(db: D1Database): Promise<void> {
   const schema = await db
     .prepare(
       `SELECT name, sql FROM sqlite_schema
-       WHERE type = 'table'
+       WHERE type IN ('table', 'trigger')
          AND name IN (
            'admin_users', 'publications', 'publication_revisions', 'applicants',
            'applicant_notes', 'applicant_status_history',
            'team_members', 'content_entries', 'rate_limits',
            'application_settings', 'audit_log', 'background_jobs',
-           'analytics_daily', 'maintenance_state'
+           'analytics_daily', 'maintenance_state', 'publications_edit_version'
          )`,
     )
     .all<SchemaDefinition>();
@@ -44,6 +43,11 @@ async function verifyMigratedSchemaAndSeed(): Promise<void> {
       "Database schema is not ready. Apply all checked-in Drizzle migrations before serving requests.",
     );
   }
+}
+
+async function verifyMigratedSchemaAndSeed(): Promise<void> {
+  const db = env.DB;
+  await verifyDatabaseSchema(db);
 
   await db
     .prepare(

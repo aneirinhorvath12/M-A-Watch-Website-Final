@@ -1,4 +1,4 @@
-import { authorizeAdminRequest } from "@/lib/admin-api";
+import { apiError, authorizeAdminRequest } from "@/lib/admin-api";
 import { listApplicants } from "@/lib/admin-data";
 import { writeAudit } from "@/lib/audit";
 
@@ -14,7 +14,8 @@ export async function GET(request: Request) {
   const auth = await authorizeAdminRequest(request);
   if (!auth.ok) return auth.response;
   const url = new URL(request.url);
-  const ids = url.searchParams.get("ids")?.split(",").map((value) => value.trim()).filter(Boolean).slice(0, 100);
+  const ids = url.searchParams.get("ids")?.split(",").map((value) => value.trim()).filter(Boolean);
+  if (ids && ids.length > 100) return apiError("Select at most 100 specific applicants, or export using filters.", 422);
   const filters = {
     q: url.searchParams.get("q") ?? undefined,
     status: url.searchParams.get("status") ?? undefined,
@@ -23,9 +24,12 @@ export async function GET(request: Request) {
     to: url.searchParams.get("to") ?? undefined,
     sort: url.searchParams.get("sort") ?? undefined,
     ids,
-    limit: 500,
+    limit: 10_001,
   };
   const applicants = await listApplicants(filters);
+  if (applicants.length > 10_000) {
+    return apiError("More than 10,000 applicants match. Narrow the date range or other filters and export again. No partial CSV has been generated.", 422);
+  }
   const header = ["Application ID", "Name", "University", "Email", "Division", "Status", "Submitted at", "Privacy version", "Possible duplicate"];
   const rows = applicants.map((item) => [
     item.id,
@@ -49,6 +53,7 @@ export async function GET(request: Request) {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="mna-watch-applicants-${new Date().toISOString().slice(0, 10)}.csv"`,
+      "X-Export-Record-Count": String(applicants.length),
       "Cache-Control": "private, no-store",
       "Content-Security-Policy": "default-src 'none'; sandbox",
       "Cross-Origin-Resource-Policy": "same-origin",

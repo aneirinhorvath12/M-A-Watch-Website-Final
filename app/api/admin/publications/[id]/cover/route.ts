@@ -1,5 +1,6 @@
+import { matchesPublicationVersion, PUBLICATION_CONFLICT } from "@/lib/publication-edit-version";
 import { ensureDatabase } from "@/db/bootstrap";
-import { apiError, authorizeAdminRequest } from "@/lib/admin-api";
+import { apiError, authorizeAdminRequest, readJsonObject } from "@/lib/admin-api";
 import { writeAudit } from "@/lib/audit";
 import {
   createPublicationCoverReference,
@@ -18,6 +19,7 @@ type PublicationCoverRow = {
   id: string;
   status: string;
   cover_image_key: string | null;
+  edit_version: number;
 };
 
 export async function POST(
@@ -35,6 +37,7 @@ export async function POST(
   }
   const upload = await readBoundedImageForm(request);
   if (!upload.ok) return apiError(upload.error, upload.status);
+  if (!matchesPublicationVersion(upload.form.get("expectedVersion"), publication.edit_version)) return apiError(PUBLICATION_CONFLICT, 409);
   const file = upload.form.get("cover");
   if (!(file instanceof File) || file.size < 1) {
     return apiError("Choose a JPEG, PNG or WebP cover image.", 422);
@@ -70,11 +73,11 @@ export async function POST(
     const updated = await database()
       .prepare(
         `UPDATE publications SET cover_image_key = ?, updated_by = ?, updated_at = ?
-         WHERE id = ? AND cover_image_key IS ?`,
+         WHERE id = ? AND cover_image_key IS ? AND edit_version = ?`,
       )
-      .bind(storedReference, auth.actor.id, now, publication.id, publication.cover_image_key)
+      .bind(storedReference, auth.actor.id, now, publication.id, publication.cover_image_key, publication.edit_version)
       .run();
-    if ((updated.meta.changes ?? 0) !== 1) {
+    if ((updated.meta.changes ?? 0) < 1) {
       await privateFiles().delete(key);
       return apiError("The cover changed in another session. Refresh and try again.", 409);
     }
@@ -100,6 +103,7 @@ export async function POST(
   await deleteReplacedCover(publication, assetId);
   return Response.json({
     ok: true,
+    version: publication.edit_version + 1,
     cover: { src, alt, width: image.width, height: image.height },
     message: "Publication cover saved.",
   }, { status: 201 });
@@ -115,17 +119,19 @@ export async function DELETE(
   const { id } = await params;
   const publication = await getPublication(id);
   if (!publication) return apiError("Publication not found.", 404);
+  const payload = await readJsonObject(request);
+  if (!matchesPublicationVersion(payload?.expectedVersion, publication.edit_version)) return apiError(PUBLICATION_CONFLICT, 409);
   const current = parsePublicationCoverReference(publication.cover_image_key);
-  if (!current) return Response.json({ ok: true, message: "No managed cover was set." });
+  if (!current) return Response.json({ ok: true, version: publication.edit_version, message: "No managed cover was set." });
   const now = Date.now();
   const removed = await database()
     .prepare(
       `UPDATE publications SET cover_image_key = NULL, updated_by = ?, updated_at = ?
-       WHERE id = ? AND cover_image_key = ?`,
+       WHERE id = ? AND cover_image_key = ? AND edit_version = ?`,
     )
-    .bind(auth.actor.id, now, publication.id, publication.cover_image_key)
+    .bind(auth.actor.id, now, publication.id, publication.cover_image_key, publication.edit_version)
     .run();
-  if ((removed.meta.changes ?? 0) !== 1) {
+  if ((removed.meta.changes ?? 0) < 1) {
     return apiError("The cover changed in another session. Refresh and try again.", 409);
   }
   try {
@@ -147,12 +153,12 @@ export async function DELETE(
   if (key) {
     try { await privateFiles().delete(key); } catch { console.error("Unable to remove a superseded publication cover."); }
   }
-  return Response.json({ ok: true, message: "Publication cover removed." });
+  return Response.json({ ok: true, version: publication.edit_version + 1, message: "Publication cover removed." });
 }
 
 async function getPublication(id: string): Promise<PublicationCoverRow | null> {
   return database()
-    .prepare("SELECT id, status, cover_image_key FROM publications WHERE id = ? LIMIT 1")
+    .prepare("SELECT id, status, cover_image_key, edit_version FROM publications WHERE id = ? LIMIT 1")
     .bind(id)
     .first<PublicationCoverRow>();
 }

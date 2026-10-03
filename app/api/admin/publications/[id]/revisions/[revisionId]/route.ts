@@ -1,3 +1,4 @@
+import { matchesPublicationVersion, PUBLICATION_CONFLICT } from "@/lib/publication-edit-version";
 import { ensureDatabase } from "@/db/bootstrap";
 import {
   apiError,
@@ -22,6 +23,7 @@ type CurrentPublication = {
   parse_warnings: string;
   status: string;
   updated_at: number;
+  edit_version: number;
 };
 
 type RevisionCandidate = {
@@ -52,7 +54,7 @@ export async function POST(
     db
       .prepare(
         `SELECT id, title, summary, authors, chapter, source_pdf_key, web_body,
-                parse_warnings, status, updated_at
+                parse_warnings, status, updated_at, edit_version
          FROM publications WHERE id = ? LIMIT 1`,
       )
       .bind(id)
@@ -67,6 +69,7 @@ export async function POST(
       .first<RevisionCandidate>(),
   ]);
   if (!current) return apiError("Publication not found.", 404);
+  if (!matchesPublicationVersion(payload.expectedVersion, current.edit_version)) return apiError(PUBLICATION_CONFLICT, 409);
   if (!candidate) return apiError("Revision not found.", 404);
 
   const validated = validatePublicationRevision(
@@ -121,7 +124,7 @@ export async function POST(
              publication.source_pdf_key, publication.web_body,
              publication.parse_warnings, ?, ?, ?
            FROM publications publication
-           WHERE publication.id = ? AND publication.updated_at = ?
+           WHERE publication.id = ? AND publication.updated_at = ? AND publication.edit_version = ?
              AND EXISTS (
                SELECT 1 FROM publication_revisions candidate
                WHERE candidate.id = ? AND candidate.publication_id = publication.id
@@ -134,6 +137,7 @@ export async function POST(
           now,
           id,
           current.updated_at,
+          current.edit_version,
           candidate.id,
         ),
       db
@@ -142,7 +146,7 @@ export async function POST(
            SET web_body = ?, parse_warnings = ?, parse_error = NULL,
                status = 'draft', scheduled_at = NULL, published_at = NULL,
                search_text = ?, updated_by = ?, updated_at = ?
-           WHERE id = ? AND updated_at = ?
+           WHERE id = ? AND updated_at = ? AND edit_version = ?
              AND EXISTS (
                SELECT 1 FROM publication_revisions candidate
                WHERE candidate.id = ? AND candidate.publication_id = publications.id
@@ -156,6 +160,7 @@ export async function POST(
           now,
           id,
           current.updated_at,
+          current.edit_version,
           candidate.id,
         ),
       db
@@ -190,7 +195,7 @@ export async function POST(
     );
   }
 
-  if ((results[1]?.meta.changes ?? 0) !== 1) {
+  if ((results[1]?.meta.changes ?? 0) < 1) {
     return apiError(
       "The publication changed while this revision was being applied. Refresh and try again.",
       409,
@@ -199,6 +204,8 @@ export async function POST(
 
   return Response.json({
     ok: true,
+    version: current.edit_version + 1,
+    resetBody: validated.value.webBody,
     message: `Revision #${candidate.revision_number} applied. The previous body was retained as a new snapshot and the publication is now Draft.`,
   });
 }

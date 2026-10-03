@@ -64,6 +64,7 @@ export type PublicationAdminRow = {
   featured: number;
   created_at: number;
   updated_at: number;
+  edit_version: number;
   published_at: number | null;
   updated_by_name?: string | null;
   published_by_name?: string | null;
@@ -131,6 +132,7 @@ export type ApplicantListFilters = {
   sort?: string;
   ids?: string[];
   limit?: number;
+  offset?: number;
   includeDeletionPending?: boolean;
 };
 
@@ -183,14 +185,15 @@ export async function listApplicants(filters: ApplicantListFilters): Promise<App
     status: "a.status ASC, a.submitted_at DESC",
     newest: "a.submitted_at DESC",
   }[filters.sort ?? "newest"] ?? "a.submitted_at DESC";
-  const limit = Math.min(500, Math.max(1, filters.limit ?? 100));
+  const limit = Math.min(10_001, Math.max(1, Math.floor(filters.limit ?? 100)));
+  const offset = Number.isSafeInteger(filters.offset) ? Math.max(0, filters.offset!) : 0;
   const sql = `SELECT a.*,
       (SELECT COUNT(*) FROM applicants duplicate
        WHERE duplicate.email = a.email
          AND ${activeApplicantRetentionSql("duplicate")}) AS duplicate_count
     FROM applicants a
     ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
-    ORDER BY ${sort} LIMIT ${limit}`;
+    ORDER BY ${sort}, a.id ASC LIMIT ${limit} OFFSET ${offset}`;
   const statement = database().prepare(sql);
   const result = await statement.bind(now, ...bindings).all<ApplicantAdminRow>();
   return result.results;

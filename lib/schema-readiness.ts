@@ -44,7 +44,10 @@ export function hasExpectedSchema(definitions: readonly SchemaDefinition[]): boo
   const hasMaintenanceHeartbeat = /\blast_completed_at\b/i.test(
     rows.get("maintenance_state") ?? "",
   );
+  const hasPublicationVersions = /\bedit_version\b/i.test(rows.get("publications") ?? "") &&
+    /OLD\.edit_version\s*\+\s*1/i.test(rows.get("publications_edit_version") ?? "");
   return (
+    hasPublicationVersions &&
     hasRequiredTables &&
     hasSubmissionIdempotency &&
     hasApplicantRetention &&

@@ -181,7 +181,7 @@ input[type="file"] {
   max-width: 14ch;
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(2.65rem, 5vw, 5rem);
+  font-size: clamp(2.25rem, 3.9vw, 3.7rem);
   font-weight: var(--display-weight);
   letter-spacing: var(--display-tracking);
   line-height: 1.04;
@@ -617,7 +617,7 @@ input[type="file"] {
   max-width: 13.5ch;
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(3.5rem, 6.8vw, 7rem);
+  font-size: clamp(2.8rem, 5.3vw, 5.18rem);
   font-weight: var(--display-weight);
   letter-spacing: var(--display-tracking);
   line-height: 1.04;
@@ -797,7 +797,7 @@ input[type="file"] {
   max-width: 18ch;
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(2.5rem, 4.8vw, 5rem);
+  font-size: clamp(2.25rem, 3.74vw, 3.7rem);
   font-weight: var(--display-weight);
   letter-spacing: var(--display-tracking);
   line-height: 1.04;
@@ -1037,7 +1037,7 @@ input[type="file"] {
 .impact-section__copy h2 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(3rem, 5.5vw, 5.5rem);
+  font-size: clamp(2.4rem, 4.29vw, 4.07rem);
   font-weight: var(--display-weight);
   letter-spacing: var(--display-tracking);
   line-height: 1.04;
@@ -1095,7 +1095,7 @@ input[type="file"] {
   max-width: 10ch;
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(3rem, 6.2vw, 6.2rem);
+  font-size: clamp(2.4rem, 4.84vw, 4.59rem);
   font-weight: var(--display-weight);
   letter-spacing: var(--display-tracking);
   line-height: 1.04;
@@ -1141,7 +1141,7 @@ input[type="file"] {
   max-width: 13ch;
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(3.8rem, 7.5vw, 7.6rem);
+  font-size: clamp(2.75rem, 5.2vw, 5rem);
   font-weight: var(--display-weight);
   letter-spacing: var(--display-tracking);
   line-height: 1.04;
@@ -1371,7 +1371,7 @@ input[type="file"] {
   max-width: 13ch;
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(2.8rem, 5vw, 5rem);
+  font-size: clamp(2.25rem, 3.9vw, 3.7rem);
   font-weight: var(--display-weight);
   letter-spacing: var(--display-tracking);
   line-height: 1.04;
@@ -1391,7 +1391,7 @@ input[type="file"] {
   max-width: 15ch;
   margin: clamp(4rem, 8vw, 7rem) 0 2rem;
   font-family: var(--font-display);
-  font-size: clamp(2.8rem, 5.5vw, 5.5rem);
+  font-size: clamp(2.25rem, 4.29vw, 4.07rem);
   font-weight: var(--display-weight);
   letter-spacing: var(--display-tracking);
   line-height: 1.04;
@@ -1464,7 +1464,7 @@ input[type="file"] {
   max-width: 11ch;
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(2.8rem, 5.6vw, 5.6rem);
+  font-size: clamp(2.25rem, 4.37vw, 4.14rem);
   font-weight: var(--display-weight);
   letter-spacing: var(--display-tracking);
   line-height: 1.04;
@@ -1500,7 +1500,7 @@ input[type="file"] {
   max-width: 13ch;
   margin: 0 0 4rem;
   font-family: var(--font-display);
-  font-size: clamp(3rem, 6vw, 6rem);
+  font-size: clamp(2.4rem, 4.68vw, 4.44rem);
   font-weight: var(--display-weight);
   letter-spacing: var(--display-tracking);
   line-height: 1.04;
@@ -1910,7 +1910,7 @@ input[type="file"] {
   max-width: 13ch;
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(3rem, 6vw, 6rem);
+  font-size: clamp(2.4rem, 4.68vw, 4.44rem);
   font-weight: var(--display-weight);
   letter-spacing: var(--display-tracking);
   line-height: 1.04;
@@ -2065,7 +2065,7 @@ input[type="file"] {
   max-width: 12ch;
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(4rem, 9vw, 9rem);
+  font-size: clamp(3.2rem, 7.02vw, 6.66rem);
   font-weight: var(--display-weight);
   letter-spacing: var(--display-tracking);
   line-height: 1.04;
@@ -2189,7 +2189,7 @@ input[type="file"] {
   .site-footer__links { grid-template-columns: repeat(2, 1fr); }
   .site-footer__links > div:last-child { grid-column: 1 / -1; }
 
-  .home-hero__content h1 { font-size: clamp(3.25rem, 16vw, 5.2rem); }
+  .home-hero__content h1 { font-size: clamp(2.6rem, 12.48vw, 3.85rem); }
   .home-hero__disciplines { flex-wrap: wrap; gap: 0.8rem 1.2rem; }
   .home-hero__disciplines li + li::before { margin-right: 1.2rem; }
   .deal-note__facts { display: grid; grid-template-columns: repeat(3, 1fr); }
@@ -2201,7 +2201,7 @@ input[type="file"] {
   .impact-stats div { min-height: 8.5rem; padding: 1rem; }
 
   .page-intro__grid { min-height: 30rem; padding-top: 6rem; }
-  .page-intro h1 { font-size: clamp(3.4rem, 16vw, 5.5rem); }
+  .page-intro h1 { font-size: clamp(2.72rem, 12.48vw, 4.07rem); }
   .page-intro__aside { top: 2rem; }
 
   .team-group__header { grid-template-columns: 2rem 1fr; }
@@ -2936,7 +2936,7 @@ input[type="file"] {
 }
 
 .home-hero__content h1 {
-  font-size: clamp(3.1rem, 6vw, 6.25rem);
+  font-size: clamp(2.48rem, 4.68vw, 4.62rem);
 }
 
 .home-hero__disciplines {
@@ -3120,4 +3120,80 @@ input[type="file"] {
 
 @media (max-width: 860px) {
   :root { --section-space: 3.25rem; }
+}
+
+/* Type refinements for Helvetica Neue at display sizes. */
+:root {
+  --display-tracking: -0.012em;
+}
+
+.page-intro h1 {
+  max-width: 14ch;
+  line-height: 1.06;
+  text-wrap: balance;
+}
+
+.display-copy {
+  max-width: 22ch;
+  line-height: 1.12;
+}
+
+.info-managed__heading,
+.info-managed__subheading,
+.home-hero__content h1,
+.section-heading h2,
+.impact-section__copy h2,
+.home-cta__panel h2,
+.inline-cta__grid h2 {
+  line-height: 1.08;
+}
+
+/* Info page: one left-aligned reading column; figures and CTAs run wide. */
+.info-managed__flow {
+  grid-template-columns: minmax(0, 46rem) minmax(0, 1fr);
+  gap: 0;
+}
+
+.info-managed__flow > * {
+  grid-column: 1;
+}
+
+.info-managed__flow > .info-managed__figure,
+.info-managed__flow > .info-managed__cta {
+  grid-column: 1 / -1;
+}
+
+.info-managed__heading {
+  max-width: 20ch;
+  margin: clamp(3rem, 6vw, 4.5rem) 0 1.25rem;
+  font-size: clamp(2rem, 3.4vw, 3rem);
+  text-wrap: balance;
+}
+
+.info-managed__subheading {
+  margin: 2rem 0 0.75rem;
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+}
+
+.info-managed__paragraph {
+  margin: 0 0 1.1rem;
+  font-size: 1.08rem;
+  line-height: 1.7;
+}
+
+.info-managed__heading + .info-managed__paragraph,
+.info-managed__subheading + .info-managed__paragraph {
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* Team intro: the label sits level with the start of its statement. */
+.team-overview__grid,
+.home-intro__grid {
+  align-items: start;
+}
+
+.team-overview__grid > .section-index,
+.home-intro__grid > .section-index {
+  margin-top: 0.9rem;
 }

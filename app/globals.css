@@ -742,7 +742,7 @@ input[type="file"] {
 }
 
 .deal-note__facts dt {
-  color: var(--color-grey);
+  color: var(--color-dark-grey);
   font-size: 0.62rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1440,7 +1440,7 @@ input[type="file"] {
 
 .info-managed__figure figcaption {
   margin-top: 0.7rem;
-  color: var(--color-grey);
+  color: var(--color-dark-grey);
   font-size: 0.76rem;
 }
 
@@ -1666,7 +1666,7 @@ input[type="file"] {
 }
 
 .apply-overview__aside dt {
-  color: var(--color-grey);
+  color: var(--color-dark-grey);
   font-size: 0.67rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -2514,4 +2514,524 @@ input[type="file"] {
 
 .brand-wave {
   margin-top: 0;
+}
+
+/* ===========================================================================
+   Design layer: atmosphere, depth and motion on top of the brand palette.
+   Motion is progressive enhancement and fully disabled for reduced motion.
+   =========================================================================== */
+
+:root {
+  --gradient-midnight:
+    radial-gradient(60rem 42rem at 88% -10%, rgba(52, 125, 207, 0.5), transparent 62%),
+    radial-gradient(46rem 34rem at -6% 108%, rgba(81, 150, 167, 0.42), transparent 64%),
+    linear-gradient(165deg, #2c4151 0%, #233542 55%, #1f2e3a 100%);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Frosted sticky header: the notice bar scrolls away, navigation stays. */
+.site-header {
+  position: sticky;
+  top: -2.2rem;
+  background: rgba(250, 250, 250, 0.84);
+  border-bottom-color: rgba(44, 65, 81, 0.12);
+  backdrop-filter: saturate(1.6) blur(16px);
+  -webkit-backdrop-filter: saturate(1.6) blur(16px);
+}
+
+.site-notice {
+  background: linear-gradient(90deg, #233542, var(--color-midnight) 40%, #2f5a7c);
+}
+
+.button {
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 240ms var(--ease-out),
+    transform 240ms var(--ease-out);
+}
+
+.button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(28, 28, 28, 0.18);
+}
+
+.button span,
+.text-link span {
+  transition: transform 240ms var(--ease-out);
+}
+
+.button:hover span,
+.text-link:hover span {
+  transform: translateX(4px);
+}
+
+/* Hero */
+.home-hero {
+  background: var(--gradient-midnight);
+}
+
+.home-hero::before {
+  border-color: rgba(154, 197, 232, 0.14);
+  box-shadow: 0 0 0 5rem rgba(154, 197, 232, 0.025), 0 0 0 11rem rgba(154, 197, 232, 0.02);
+}
+
+.home-hero__mesh {
+  opacity: 0.55;
+  mask-image: radial-gradient(70% 80% at 75% 35%, #000 0%, transparent 75%);
+}
+
+.home-hero .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.95rem 0.5rem 0.8rem;
+  border: 1px solid rgba(154, 197, 232, 0.32);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #cfe3f5;
+}
+
+.home-hero .eyebrow::before {
+  width: 0.45rem;
+  height: 0.45rem;
+  flex: none;
+  border-radius: 50%;
+  background: var(--color-sky);
+  box-shadow: 0 0 0 4px rgba(154, 197, 232, 0.2);
+  content: "";
+}
+
+.home-hero__content h1 {
+  background: linear-gradient(180deg, #ffffff 35%, #cfe3f5 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-wrap: balance;
+}
+
+.home-hero__lede {
+  color: rgba(255, 255, 255, 0.8);
+  text-wrap: pretty;
+}
+
+.home-hero__disciplines {
+  gap: 0.6rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.home-hero__disciplines li {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.home-hero__disciplines li + li::before {
+  display: none;
+}
+
+.deal-note {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.5),
+    0 40px 90px rgba(8, 18, 26, 0.45),
+    0 0 120px rgba(52, 125, 207, 0.35);
+}
+
+.deal-note__chart {
+  gap: 6px;
+}
+
+.deal-note__chart span {
+  border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(180deg, #b4d4ef, var(--color-sky));
+  transform-origin: bottom;
+}
+
+.deal-note__chart span:nth-child(6),
+.deal-note__chart span:nth-child(7) {
+  background: linear-gradient(180deg, #4b93e0, var(--color-blue));
+}
+
+/* Ticker on the wave band */
+.deal-ticker {
+  overflow: hidden;
+  padding-block: 1.05rem 1.15rem;
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+
+.deal-ticker__track {
+  display: flex;
+  width: max-content;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.deal-ticker__track li {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding-right: 2.75rem;
+  color: var(--color-midnight);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.deal-ticker__mark {
+  width: 0.45rem;
+  height: 0.45rem;
+  flex: none;
+  background: var(--color-white);
+  transform: rotate(45deg);
+}
+
+/* Purpose */
+.home-intro .display-copy {
+  text-wrap: balance;
+}
+
+/* Three lenses */
+.area-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.area-card--01 {
+  background: linear-gradient(160deg, #b7d6f0 0%, var(--color-sky) 55%, #8bbbe3 100%);
+}
+
+.area-card--02 {
+  background: linear-gradient(160deg, #ffffff 0%, #f3f7fb 100%);
+}
+
+.area-card--03 {
+  background:
+    radial-gradient(22rem 16rem at 110% 110%, rgba(81, 150, 167, 0.45), transparent 70%),
+    linear-gradient(165deg, #2c4151 0%, #22333f 100%);
+}
+
+.area-card::after {
+  position: absolute;
+  z-index: -1;
+  right: -7rem;
+  bottom: -7rem;
+  width: 18rem;
+  height: 18rem;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2.5rem rgba(255, 255, 255, 0.06);
+  content: "";
+  opacity: 0.12;
+}
+
+.area-card__number {
+  font-size: 2.6rem;
+  line-height: 1;
+  opacity: 0.55;
+}
+
+/* Values */
+.brand-values {
+  background:
+    radial-gradient(40rem 26rem at 100% 0%, rgba(255, 255, 255, 0.35), transparent 70%),
+    var(--color-sky);
+}
+
+.brand-values__card {
+  background: rgba(250, 250, 250, 0.92);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset;
+}
+
+.brand-values__icon {
+  background: linear-gradient(160deg, #ffffff, #e8f1fa);
+}
+
+/* Featured research */
+.featured-card__visual {
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.2) inset;
+}
+
+.featured-card__monogram {
+  transition: transform 500ms var(--ease-out);
+}
+
+.featured-card:hover .featured-card__monogram {
+  transform: scale(1.06);
+}
+
+/* Impact */
+.impact-section {
+  position: relative;
+  overflow: hidden;
+  background: var(--gradient-midnight);
+}
+
+.impact-stats div {
+  box-shadow: 0 20px 50px rgba(8, 18, 26, 0.28);
+}
+
+.impact-stats dd {
+  background: linear-gradient(120deg, var(--color-blue) 0%, var(--color-teal) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Application call to action */
+.home-cta {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(50rem 30rem at 0% 0%, rgba(255, 255, 255, 0.45), transparent 70%),
+    linear-gradient(160deg, #a9cdec 0%, var(--color-sky) 60%, #86b6e0 100%);
+}
+
+.home-cta__lines {
+  position: absolute;
+  z-index: -1;
+  inset: auto 0 0;
+  width: 100%;
+  height: 100%;
+}
+
+.home-cta__lines path {
+  fill: none;
+  stroke: rgba(52, 125, 207, 0.32);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.home-cta__panel h2 {
+  text-wrap: balance;
+}
+
+/* Interior page intros share the hero atmosphere. */
+.page-intro--dark {
+  background: var(--gradient-midnight);
+}
+
+/* Footer */
+.site-footer {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, #23262c 0%, var(--color-ink) 100%);
+}
+
+.site-footer::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-blue), var(--color-sky), var(--color-teal));
+  content: "";
+}
+
+.footer-wordmark {
+  margin-top: clamp(3rem, 7vw, 6rem);
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(154, 197, 232, 0.22), rgba(154, 197, 232, 0));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-family: var(--font-logotype);
+  font-size: clamp(3.5rem, 13.2vw, 13.5rem);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 0.82;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* Motion: entrance on load, reveal on scroll, ticker. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes rise-in {
+    from { opacity: 0; translate: 0 24px; }
+    to { opacity: 1; translate: 0 0; }
+  }
+
+  @keyframes bar-grow {
+    from { transform: scaleY(0.05); }
+    to { transform: scaleY(1); }
+  }
+
+  @keyframes float {
+    0%, 100% { translate: 0 0; }
+    50% { translate: 0 -10px; }
+  }
+
+  @keyframes ticker {
+    to { transform: translateX(-50%); }
+  }
+
+  .home-hero__content > * {
+    animation: rise-in 900ms var(--ease-out) both;
+  }
+
+  .home-hero__content > :nth-child(2) { animation-delay: 80ms; }
+  .home-hero__content > :nth-child(3) { animation-delay: 160ms; }
+  .home-hero__content > :nth-child(4) { animation-delay: 240ms; }
+  .home-hero__content > :nth-child(5) { animation-delay: 320ms; }
+
+  .deal-note {
+    animation: rise-in 1000ms 200ms var(--ease-out) both, float 7s 1.4s ease-in-out infinite;
+  }
+
+  .deal-note__chart span {
+    animation: bar-grow 900ms var(--ease-out) both;
+  }
+
+  .deal-note__chart span:nth-child(2) { animation-delay: 420ms; }
+  .deal-note__chart span:nth-child(3) { animation-delay: 480ms; }
+  .deal-note__chart span:nth-child(4) { animation-delay: 540ms; }
+  .deal-note__chart span:nth-child(5) { animation-delay: 600ms; }
+  .deal-note__chart span:nth-child(6) { animation-delay: 660ms; }
+  .deal-note__chart span:nth-child(7) { animation-delay: 720ms; }
+  .deal-note__chart span:nth-child(1) { animation-delay: 360ms; }
+
+  .deal-ticker__track {
+    animation: ticker 70s linear infinite;
+  }
+
+  .deal-ticker:hover .deal-ticker__track {
+    animation-play-state: paused;
+  }
+
+  @supports (animation-timeline: view()) {
+    .section-heading,
+    .home-intro__grid,
+    .area-card,
+    .brand-values__heading,
+    .brand-values__card,
+    .featured-card,
+    .impact-section__copy,
+    .impact-stats div,
+    .home-cta__panel,
+    .mission-vision__card {
+      animation: rise-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 55%;
+    }
+  }
+}
+
+@media print {
+  .site-header { position: static; }
+  .deal-ticker, .footer-wordmark, .home-cta__lines { display: none; }
+}
+
+.home-hero__grid {
+  min-height: min(44rem, calc(100vh - 7.35rem));
+  padding-top: clamp(4rem, 7vw, 6.5rem);
+  padding-bottom: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+.home-hero__content h1 {
+  font-size: clamp(3.1rem, 6vw, 6.25rem);
+}
+
+.home-hero__disciplines {
+  margin-top: clamp(2.25rem, 4vw, 3.5rem);
+}
+
+/* Editorial details */
+.section-index {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.section-index::before {
+  width: 1.75rem;
+  height: 2px;
+  flex: none;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--color-blue), var(--color-sky));
+  content: "";
+}
+
+.section-index--light::before,
+.brand-values .section-index::before {
+  background: linear-gradient(90deg, var(--color-sky), rgba(255, 255, 255, 0.9));
+}
+
+.brand-values .section-index::before {
+  background: var(--color-midnight);
+}
+
+.display-copy {
+  color: var(--color-charcoal);
+  text-wrap: balance;
+}
+
+.section-heading h2,
+.brand-values__title {
+  text-wrap: balance;
+}
+
+/* Team */
+.team-card {
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 1px 2px rgba(28, 28, 28, 0.04);
+  transition: transform 260ms var(--ease-out), box-shadow 260ms var(--ease-out);
+}
+
+.team-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-card);
+}
+
+.inline-cta {
+  background: var(--gradient-midnight);
+}
+
+/* Light page intros get a soft sky glow. */
+.page-intro--light {
+  background:
+    radial-gradient(48rem 30rem at 92% 0%, rgba(154, 197, 232, 0.45), transparent 65%),
+    radial-gradient(30rem 22rem at 0% 100%, rgba(156, 189, 208, 0.25), transparent 70%),
+    var(--color-paper);
+}
+
+@media (prefers-reduced-motion: no-preference) and (min-width: 0px) {
+  @supports (animation-timeline: view()) {
+    .team-card,
+    .team-group__header {
+      animation: rise-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 55%;
+    }
+  }
+}
+
+@media (max-width: 640px) {
+  .home-hero .eyebrow {
+    font-size: 0.64rem;
+    letter-spacing: 0.12em;
+  }
+}
+
+/* Contrast: eyebrows on sky panels and text on the blue card. */
+.info-managed__cta .eyebrow,
+.home-cta .eyebrow {
+  color: var(--color-midnight);
+}
+
+.mission-vision__card:not(.mission-vision__card--dark) {
+  background: var(--color-blue-dark);
+}
+
+/* Deeper tint of Muted Teal so cover labels meet 4.5:1. */
+.featured-card--legal .featured-card__visual {
+  background: #3b7b8c;
 }

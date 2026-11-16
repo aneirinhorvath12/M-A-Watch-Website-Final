@@ -58,7 +58,7 @@ function InfoBlock({ block, privatePreview }: { block: InfoContentBlock; private
     );
   }
   return (
-    <aside className="info-managed__cta" aria-label={block.heading}>
+    <section className="info-managed__cta" aria-label={block.heading}>
       <div>
         {block.eyebrow ? <p className="eyebrow">{block.eyebrow}</p> : null}
         <h2>{block.heading}</h2>
@@ -76,7 +76,7 @@ function InfoBlock({ block, privatePreview }: { block: InfoContentBlock; private
           ) : null}
         </div>
       </div>
-    </aside>
+    </section>
   );
 }
 

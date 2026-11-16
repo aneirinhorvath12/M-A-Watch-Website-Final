@@ -12,10 +12,14 @@ import {
 
 const TOKEN_RESPONSE_LIMIT = 16 * 1024;
 const CONTROL_RESPONSE_LIMIT = 64 * 1024;
-const STRUCTURED_DATA_LIMIT = 16 * 1024 * 1024;
-const RESOURCE_ARCHIVE_LIMIT = 32 * 1024 * 1024;
+// Completion holds the parsed JSON, the archive, the unzipped figures and the
+// mapped blocks at once inside a 128 MB Worker isolate. These bounds keep the
+// combined peak well below that limit; larger reports fail permanently with a
+// clear error instead of crashing the isolate and retrying.
+const STRUCTURED_DATA_LIMIT = 8 * 1024 * 1024;
+const RESOURCE_ARCHIVE_LIMIT = 20 * 1024 * 1024;
 const FIGURE_RENDITION_LIMIT = 5 * 1024 * 1024;
-const FIGURE_RENDITIONS_TOTAL_LIMIT = 20 * 1024 * 1024;
+const FIGURE_RENDITIONS_TOTAL_LIMIT = 16 * 1024 * 1024;
 const MAX_FIGURE_RENDITIONS = 250;
 const MAX_RENDITION_ARCHIVE_ENTRIES = 1_000;
 const MAX_FIGURE_PIXELS = 40_000_000;

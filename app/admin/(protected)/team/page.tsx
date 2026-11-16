@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { EmptyState, PageHeader, StatusBadge, adminStyles as styles } from "@/components/admin/AdminUI";
+import { requireAdmin } from "@/lib/admin-auth";
 import { database } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +45,7 @@ function MemberFields({ member }: { member?: TeamRow }) {
 }
 
 export default async function TeamAdminPage() {
+  await requireAdmin("/admin/team");
   const members = await database().prepare(
     "SELECT * FROM team_members ORDER BY group_name COLLATE NOCASE, display_order, name COLLATE NOCASE",
   ).all<TeamRow>();

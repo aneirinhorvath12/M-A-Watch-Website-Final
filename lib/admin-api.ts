@@ -1,5 +1,6 @@
 import { getAdminActor, type AdminActor } from "@/lib/admin-auth";
 import { hasSafeRequestOrigin } from "@/lib/security";
+import { readBoundedUtf8Body } from "@/lib/analytics-request";
 
 export type ApiAuthorization =
   | { ok: true; actor: AdminActor }
@@ -40,11 +41,22 @@ export function apiError(
   return Response.json({ ok: false, error, ...extra }, { status });
 }
 
+// Admin JSON bodies (including full article bodies) stay well below this; the
+// cap is enforced while streaming, independent of any Content-Length claim.
+export const MAX_ADMIN_JSON_BYTES = 2 * 1024 * 1024;
+
 export async function readJsonObject(
   request: Request,
+  maxBytes: number = MAX_ADMIN_JSON_BYTES,
 ): Promise<Record<string, unknown> | null> {
   try {
-    const value: unknown = await request.json();
+    const declared = Number(request.headers.get("content-length") ?? "0");
+    if (Number.isFinite(declared) && declared > maxBytes) return null;
+    const body = await readBoundedUtf8Body(request.body, maxBytes, {
+      deadlineMs: 15_000,
+    });
+    if (!body.ok) return null;
+    const value: unknown = JSON.parse(body.text);
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     return value as Record<string, unknown>;
   } catch {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { EmptyState, PageHeader, StatusBadge, adminStyles as styles } from "@/components/admin/AdminUI";
+import { requireAdmin } from "@/lib/admin-auth";
 import { APPLICANT_STATUSES, formatAdminDate, listApplicants, titleCaseStatus } from "@/lib/admin-data";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,7 @@ export default async function ApplicantsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireAdmin("/admin/applicants");
   const params = await searchParams;
   const filters = {
     q: one(params.q), status: one(params.status), division: one(params.division),

@@ -4,6 +4,7 @@ import {
   APPLICANT_RETENTION_DAYS,
   CURRENT_APPLICATION_PRIVACY_VERSION,
 } from "@/lib/data-policy";
+import { requireAdmin } from "@/lib/admin-auth";
 import { database, safeJson } from "@/lib/platform";
 import {
   currentRecruitmentOperationsStatus,
@@ -22,6 +23,7 @@ type SettingsRow = {
 };
 
 export default async function ApplicationSettingsPage() {
+  await requireAdmin("/admin/application-settings");
   const settings = await database().prepare(
     "SELECT open, introduction, closed_message, notification_recipients, privacy_policy_version, retention_days FROM application_settings WHERE id = 1",
   ).first<SettingsRow>();

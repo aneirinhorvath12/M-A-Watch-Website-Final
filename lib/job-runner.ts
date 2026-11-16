@@ -57,6 +57,7 @@ import {
   effectiveApplicantRetentionSql,
 } from "@/lib/applicant-retention";
 import { recordMaintenanceSuccess } from "@/lib/maintenance-state";
+import { sweepOrphanedPrivateObjects } from "@/lib/orphan-sweep";
 
 const INTEGRATION_JOB_TYPES = [
   "email",
@@ -138,6 +139,8 @@ export type JobRunSummary = {
   retentionQueued: number;
   rateLimitsPruned: number;
   analyticsRowsPruned: number;
+  jobsPruned: number;
+  orphanedObjectsDeleted: number;
 };
 
 class PermanentJobError extends Error {}
@@ -158,6 +161,13 @@ export async function runMaintenance(limit = 5): Promise<JobRunSummary> {
   );
   const rateLimitsPruned = await pruneExpiredRateLimits(now);
   const analyticsRowsPruned = await pruneExpiredAnalytics(now);
+  const jobsPruned = await pruneFinishedJobs(now);
+  const orphanedObjectsDeleted = await sweepOrphanedPrivateObjects(now)
+    .then((sweep) => sweep.deleted)
+    .catch((error: unknown) => {
+      console.error("Unable to sweep orphaned private objects", error);
+      return 0;
+    });
   const configuredTypes = INTEGRATION_JOB_TYPES.filter((type) =>
     Boolean(integrationFor(type, secrets)?.endpoint),
   );
@@ -178,10 +188,23 @@ export async function runMaintenance(limit = 5): Promise<JobRunSummary> {
     retentionQueued: retention.queued,
     rateLimitsPruned,
     analyticsRowsPruned,
+    jobsPruned,
+    orphanedObjectsDeleted,
   };
 
   for (const job of rows) {
-    const result = await processJob(job, secrets);
+    let result: "succeeded" | "failed" | "skipped";
+    try {
+      result = await processJob(job, secrets);
+    } catch (error) {
+      // A D1 error while recording one job's outcome must not abort the rest
+      // of the run or skip the heartbeat. The job stays leased and is picked
+      // up by stale-lease recovery.
+      console.error("Unable to record a background job outcome", error);
+      summary.processed += 1;
+      summary.failed += 1;
+      continue;
+    }
     if (result === "skipped") {
       summary.skipped += 1;
       continue;
@@ -333,17 +356,76 @@ async function pruneExpiredRateLimits(now: number): Promise<number> {
   return result.meta.changes ?? 0;
 }
 
-async function recoverStaleJobs(now: number): Promise<number> {
+// Finished email jobs keep recipient addresses and message data; they are
+// only needed briefly for idempotency and troubleshooting. Other job types are
+// retained because their latest status gates CV downloads and publishing.
+const SUCCEEDED_JOB_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const FAILED_EMAIL_JOB_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
+async function pruneFinishedJobs(now: number): Promise<number> {
   const result = await database()
     .prepare(
-      `UPDATE background_jobs
-       SET status = 'queued', error = 'The previous worker lease expired; retrying.',
-           claim_token = NULL, run_after = ?, updated_at = ?
-       WHERE status = 'running' AND updated_at <= ?`,
+      `DELETE FROM background_jobs
+       WHERE type = 'email'
+         AND ((status = 'succeeded' AND updated_at <= ?)
+           OR (status = 'failed' AND updated_at <= ?))`,
     )
-    .bind(now, now, now - JOB_LEASE_MS)
+    .bind(now - SUCCEEDED_JOB_RETENTION_MS, now - FAILED_EMAIL_JOB_RETENTION_MS)
     .run();
   return result.meta.changes ?? 0;
+}
+
+async function recoverStaleJobs(now: number): Promise<number> {
+  // A job whose worker died (memory, CPU or wall-clock limit) never reaches
+  // finishFailedJob, so its attempt budget must be enforced here too.
+  // Otherwise a job that reliably kills its isolate would loop forever.
+  const stale = await database()
+    .prepare(
+      `SELECT id, type, payload, attempts, claim_token FROM background_jobs
+       WHERE status = 'running' AND updated_at <= ?
+       ORDER BY updated_at ASC LIMIT 50`,
+    )
+    .bind(now - JOB_LEASE_MS)
+    .all<JobRow & { claim_token: string | null }>();
+
+  let recovered = 0;
+  for (const row of stale.results) {
+    const { claim_token: claimToken, ...job } = row;
+    try {
+      if (claimToken && job.attempts >= JOB_MAX_ATTEMPTS) {
+        const recorded = await finishFailedJob(
+          job,
+          job.attempts,
+          new PermanentJobError(
+            "The worker stopped repeatedly before this job could finish.",
+          ),
+          claimToken,
+        );
+        if (recorded) recovered += 1;
+        continue;
+      }
+      const result = await database()
+        .prepare(
+          `UPDATE background_jobs
+           SET status = 'queued', error = 'The previous worker lease expired; retrying.',
+               claim_token = NULL, run_after = ?, updated_at = ?
+           WHERE id = ? AND status = 'running' AND updated_at <= ?
+             AND claim_token IS ?`,
+        )
+        .bind(
+          now + jobRetryDelayMs(Math.max(1, job.attempts)),
+          now,
+          job.id,
+          now - JOB_LEASE_MS,
+          claimToken,
+        )
+        .run();
+      recovered += result.meta.changes ?? 0;
+    } catch (error) {
+      console.error("Unable to recover a stale background job", error);
+    }
+  }
+  return recovered;
 }
 
 async function publishDueItems(now: number, limit: number): Promise<number> {
@@ -807,21 +889,24 @@ async function invokeIntegration(
       "The stored PDF has not passed the required malware scan.",
     );
   }
-  const bytes = await object.arrayBuffer();
+  // Avoid buffering the PDF into an ArrayBuffer (and copying it again into a
+  // Blob): stream the R2 body directly, or hand FormData the object's Blob.
   const resourceId =
     stringField(payload.publicationId) ?? stringField(payload.applicationId);
-  const request =
+  const contentType = object.httpMetadata?.contentType ?? "application/pdf";
+  const request: { headers: Record<string, string>; body: BodyInit } =
     job.type === "file_scan" && integration.malwareProvider?.kind === "cloudmersive"
       ? cloudmersiveScanRequest(
           integration.malwareProvider,
-          bytes,
-          object.httpMetadata?.contentType ?? "application/pdf",
+          await object.blob(),
+          contentType,
         )
       : {
           headers: {
-            "content-type": object.httpMetadata?.contentType ?? "application/pdf",
+            "content-type": contentType,
+            "content-length": String(object.size),
           },
-          body: bytes,
+          body: object.body,
         };
   const response = await fetchWithTimeout(endpoint, {
     method: "POST",
@@ -946,13 +1031,15 @@ async function invokeAdobeParser(
       );
     }
     const signatureBytes = new Uint8Array(await object.arrayBuffer());
-    const storedFigures = await storeAdobeFigureRenditions(
+    // Asset ids are deterministic per claim, so figure URLs can be planned
+    // before any bytes are written. Only figures that survive validation are
+    // then stored, avoiding writes (and cleanup queries) for unused figures.
+    const storedFigures = await planAdobeFigureAssets(
       publicationId,
       job.id,
       claimToken,
       outcome.figureRenditions,
     );
-    managedAssetKeys = storedFigures.keys;
     const extraction = mapAdobeStructuredData(outcome.structuredData, {
       figureAssets: storedFigures.assets,
     });
@@ -980,21 +1067,17 @@ async function invokeAdobeParser(
         block.type === "image" ? [block.src] : [],
       ),
     );
-    const unusedKeys: string[] = [];
-    const retainedKeys: string[] = [];
-    for (const [path, key] of storedFigures.keysByPath) {
-      const source = storedFigures.assets.get(path)?.src;
-      (
-        parserResult.status === "draft" &&
-        source &&
-        referencedFigureSources.has(source)
-          ? retainedKeys
-          : unusedKeys
-      ).push(key);
-    }
-    if (unusedKeys.length) {
-      await deleteUnreferencedPublicationAssets(unusedKeys);
-    }
+    const retainedRenditions =
+      parserResult.status === "draft"
+        ? outcome.figureRenditions.filter((rendition) => {
+            const source = storedFigures.assets.get(rendition.path)?.src;
+            return Boolean(source && referencedFigureSources.has(source));
+          })
+        : [];
+    const retainedKeys = await storePlannedFigureRenditions(
+      storedFigures.keysByPath,
+      retainedRenditions,
+    );
     managedAssetKeys = retainedKeys;
     return {
       kind: "publication_parse",
@@ -1030,7 +1113,7 @@ async function invokeAdobeParser(
   }
 }
 
-async function storeAdobeFigureRenditions(
+async function planAdobeFigureAssets(
   publicationId: string,
   jobId: string,
   claimToken: string,
@@ -1042,19 +1125,43 @@ async function storeAdobeFigureRenditions(
   }[],
 ): Promise<{
   assets: Map<string, { src: string; width: number; height: number }>;
-  keys: string[];
   keysByPath: Map<string, string>;
 }> {
   const assets = new Map<
     string,
     { src: string; width: number; height: number }
   >();
-  const keys: string[] = [];
   const keysByPath = new Map<string, string>();
+  for (const rendition of renditions) {
+    const assetId = `${await claimScopedImageId(jobId, claimToken, rendition.bytes)}.png`;
+    assets.set(rendition.path, {
+      src: `/api/publications/${encodeURIComponent(publicationId)}/images/${assetId}`,
+      width: rendition.width,
+      height: rendition.height,
+    });
+    keysByPath.set(
+      rendition.path,
+      `private/publication-assets/${publicationId}/${assetId}`,
+    );
+  }
+  return { assets, keysByPath };
+}
+
+async function storePlannedFigureRenditions(
+  keysByPath: ReadonlyMap<string, string>,
+  renditions: readonly {
+    path: string;
+    bytes: Uint8Array;
+    width: number;
+    height: number;
+  }[],
+): Promise<string[]> {
+  const keys: string[] = [];
   try {
     for (const rendition of renditions) {
-      const assetId = `${await claimScopedImageId(jobId, claimToken, rendition.bytes)}.png`;
-      const key = `private/publication-assets/${publicationId}/${assetId}`;
+      const key = keysByPath.get(rendition.path);
+      if (!key) continue;
+      const publicationId = key.split("/")[2] ?? "";
       await privateFiles().put(key, rendition.bytes, {
         httpMetadata: { contentType: "image/png" },
         customMetadata: {
@@ -1065,19 +1172,13 @@ async function storeAdobeFigureRenditions(
           source: "adobe-pdf-extract",
         },
       });
-      assets.set(rendition.path, {
-        src: `/api/publications/${encodeURIComponent(publicationId)}/images/${assetId}`,
-        width: rendition.width,
-        height: rendition.height,
-      });
       keys.push(key);
-      keysByPath.set(rendition.path, key);
     }
   } catch (error) {
     await deleteUnreferencedPublicationAssets(keys);
     throw error;
   }
-  return { assets, keys, keysByPath };
+  return keys;
 }
 
 async function deleteUnreferencedPublicationAssets(
@@ -1086,18 +1187,22 @@ async function deleteUnreferencedPublicationAssets(
   for (const key of new Set(keys)) {
     try {
       const match = key.match(
-        /^private\/publication-assets\/publication_[0-9a-f-]{36}\/([0-9a-f-]{36}\.png)$/i,
+        /^private\/publication-assets\/(publication_[0-9a-f-]{36})\/([0-9a-f-]{36}\.png)$/i,
       );
       if (!match) continue;
-      const assetId = match[1];
+      const [, publicationId, assetId] = match;
+      // Managed images are only ever served through their own publication,
+      // so the reference check is scoped to it instead of scanning every row.
       const referenced = await database()
         .prepare(
-          `SELECT 1 AS present FROM publications WHERE instr(web_body, ?) > 0
+          `SELECT 1 AS present FROM publications
+           WHERE id = ? AND instr(web_body, ?) > 0
            UNION ALL
-           SELECT 1 AS present FROM publication_revisions WHERE instr(web_body, ?) > 0
+           SELECT 1 AS present FROM publication_revisions
+           WHERE publication_id = ? AND instr(web_body, ?) > 0
            LIMIT 1`,
         )
-        .bind(assetId, assetId)
+        .bind(publicationId, assetId, publicationId, assetId)
         .first<{ present: number }>();
       if (!referenced) await privateFiles().delete(key);
     } catch {
@@ -1132,13 +1237,13 @@ function adobeStateFromPayload(value: unknown): AdobeExtractJobState | null {
 
 function cloudmersiveScanRequest(
   provider: Extract<MalwareProviderConfig, { kind: "cloudmersive" }>,
-  bytes: ArrayBuffer,
+  file: Blob,
   contentType: string,
 ): { headers: Record<string, string>; body: FormData } {
   const form = new FormData();
   form.append(
     "inputFile",
-    new Blob([bytes], { type: contentType }),
+    file.type === contentType ? file : new Blob([file], { type: contentType }),
     "upload.pdf",
   );
   return {
@@ -1397,6 +1502,10 @@ async function finishFileScan(
            SELECT ?, 'publication_parse', 'queued', ?, 0, ?, ?, ?
            FROM publications
            WHERE id = ? AND source_pdf_key = ? AND type IN ('strategic', 'legal')
+             -- Only queue parsing when the preceding statement in this batch
+             -- moved the publication to parsing; an archived or manually
+             -- drafted report must not consume a parser transaction.
+             AND status = 'parsing' AND updated_at = ?
              AND EXISTS (
                SELECT 1 FROM background_jobs
                WHERE id = ? AND status = 'running' AND claim_token = ?
@@ -1410,6 +1519,7 @@ async function finishFileScan(
           now,
           publicationId,
           key,
+          now,
           job.id,
           claimToken,
         ),
@@ -1493,8 +1603,9 @@ async function setStoredFileScanStatus(
   if (!current) throw new PermanentJobError("The stored PDF is unavailable.");
   if (current.customMetadata?.scanStatus === status) return;
 
-  const bytes = await current.arrayBuffer();
-  const written = await bucket.put(key, bytes, {
+  // R2 metadata can only change by rewriting the object. Pipe the existing
+  // known-length body back rather than buffering the whole PDF in memory.
+  const written = await bucket.put(key, current.body, {
     httpMetadata: current.httpMetadata,
     customMetadata: {
       ...current.customMetadata,

@@ -73,8 +73,11 @@ export async function POST(request: Request) {
   if (cleanPlainText(form.get("website"), 200)) {
     return Response.json({ ok: true }, { status: 201 });
   }
+  // The form always sends its start time; a missing, malformed or
+  // implausibly fast value is treated as automated.
   const startedAt = Number(form.get("formStartedAt") ?? 0);
-  if (startedAt && Date.now() - startedAt < 1_500) {
+  const elapsed = Date.now() - startedAt;
+  if (!Number.isFinite(startedAt) || startedAt <= 0 || elapsed < 1_500) {
     return Response.json({ error: "Please review the form before submitting." }, { status: 400 });
   }
 

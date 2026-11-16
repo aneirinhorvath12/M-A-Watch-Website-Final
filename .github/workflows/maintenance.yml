@@ -14,6 +14,8 @@ concurrency:
 
 jobs:
   run:
+    # Forks inherit the schedule but not the production secrets.
+    if: github.repository == 'aneirinhorvath12/M-A-Watch-Website-Final'
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:

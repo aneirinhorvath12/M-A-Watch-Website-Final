@@ -8,12 +8,6 @@ import { secureAdminLoginUrl } from "@/lib/recruitment-policy";
 
 export const dynamic = "force-dynamic";
 
-async function tokenHash(): Promise<string> {
-  const token = crypto.randomUUID();
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 export async function GET(request: Request) {
   const auth = await authorizeAdminRequest(request, { superUser: true });
   if (!auth.ok) return auth.response;
@@ -49,11 +43,14 @@ export async function POST(request: Request) {
       503,
     );
   }
+  // Invitations are accepted by the hosting platform's authenticated email
+  // matching this record before it expires (lib/admin-auth.ts). No bearer
+  // token is issued, so none is stored.
   await database().prepare(
     `INSERT INTO admin_users
      (id, name, email, role, status, invitation_token_hash, invitation_expires_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'invited', ?, ?, ?, ?)`,
-  ).bind(id, name, email, role, await tokenHash(), expiresAt, now, now).run();
+     VALUES (?, ?, ?, ?, 'invited', NULL, ?, ?, ?)`,
+  ).bind(id, name, email, role, expiresAt, now, now).run();
   await queueEmail({
     template: "account-invitation",
     to: [email],

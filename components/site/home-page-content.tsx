@@ -1,3 +1,4 @@
+import { BrandValues, BrandWave } from "@/components/site/brand-elements";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -11,6 +12,19 @@ import type {
   BasicPageContent,
   HomepageEditorialContent,
 } from "@/lib/site-content";
+
+/**
+ * Pairs editor-managed strings with content-derived keys that stay stable when
+ * an editor removes or reorders entries (duplicates get an occurrence suffix).
+ */
+function withContentKeys(values: readonly string[], prefix: string) {
+  const seen = new Map<string, number>();
+  return values.map((value) => {
+    const occurrence = seen.get(value) ?? 0;
+    seen.set(value, occurrence + 1);
+    return { key: `${prefix}-${value}-${occurrence}`, value };
+  });
+}
 
 export function HomePageContent({
   featured,
@@ -60,7 +74,7 @@ export function HomePageContent({
               </Link>
             </div>
             <ul className="home-hero__disciplines" aria-label={hero.disciplinesAriaLabel}>
-              {hero.disciplines.map((discipline, index) => <li key={`discipline-${index}`}>{discipline}</li>)}
+              {withContentKeys(hero.disciplines, "discipline").map(({ key, value }) => <li key={key}>{value}</li>)}
             </ul>
           </div>
 
@@ -95,9 +109,11 @@ export function HomePageContent({
             ) : null}
           </div>
         </div>
-        <div className="home-hero__rule" aria-hidden="true">
-          {hero.ruleLabels.map((label, index) => <span key={`hero-rule-${index}`}>{label}</span>)}
-        </div>
+        <BrandWave>
+          <div className="site-shell home-hero__rule" aria-hidden="true">
+            {withContentKeys(hero.ruleLabels, "hero-rule").map(({ key, value }) => <span key={key}>{value}</span>)}
+          </div>
+        </BrandWave>
       </section>
 
       <section className="home-intro section-pad">
@@ -139,6 +155,8 @@ export function HomePageContent({
           </div>
         </div>
       </section>
+
+      <BrandValues />
 
       <section className="featured-work section-pad" aria-labelledby="featured-title">
         <div className="site-shell">

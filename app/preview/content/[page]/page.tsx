@@ -98,10 +98,7 @@ export default async function ContentPreviewPage({
           <h1>The saved contact draft appears below.</h1>
         </div>
       </main>
-      <SiteFooter
-        initialContent={draft("site.contact") as SiteContactContent}
-        loadPublished={false}
-      />
+      <SiteFooter content={draft("site.contact") as SiteContactContent} />
     </>
   );
 }

@@ -175,8 +175,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return apiError("Unpublish this report to Draft before changing its public article body.", 409);
   }
   if (bodyChanged && existing.status === "scheduled" && existing.type !== "markets") {
-    if (safeJson<unknown[]>(webBody, []).length === 0) return apiError("A scheduled report cannot have an empty article body.", 422);
-    if (bodyMissingAlt) return apiError("Every report image needs alternative text while publication is scheduled.", 422);
+    // The scheduler publishes automatically, so an unreviewed body change
+    // must not ride along with an existing schedule.
+    return apiError(
+      "Move this scheduled report back to Draft before changing its article body, then send it through Review again.",
+      409,
+    );
   }
 
   const duplicate = await database()
@@ -309,9 +313,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const createsRecoveryRevision =
     intent === "manual_draft" || intent === "acknowledge_warnings";
-  const revisionNumber = bodyChanged || createsRecoveryRevision
-    ? ((await database().prepare("SELECT COALESCE(MAX(revision_number), 0) AS value FROM publication_revisions WHERE publication_id = ?").bind(id).first<{ value: number }>())?.value ?? 0) + 1
-    : null;
+  // The revision number is computed inside the batch so a parser revision
+  // inserted concurrently cannot collide with the unique revision index.
+  const revisionNumber = bodyChanged || createsRecoveryRevision;
   const statements: D1PreparedStatement[] = [];
   if (revisionNumber) {
     statements.push(
@@ -319,13 +323,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         .prepare(
           `INSERT INTO publication_revisions
            (id, publication_id, revision_number, source_pdf_key, web_body, parse_warnings, note, created_by, created_at)
-           SELECT ?, id, ?, source_pdf_key, ?, ?, ?, ?, ?
+           SELECT ?, id, (SELECT COALESCE(MAX(revision_number), 0) + 1 FROM publication_revisions WHERE publication_id = publications.id), source_pdf_key, ?, ?, ?, ?, ?
            FROM publications
            WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ?`,
         )
         .bind(
           createId("revision"),
-          revisionNumber,
           webBody,
           existing.parse_warnings,
           intent === "manual_draft"
@@ -433,6 +436,14 @@ async function replaceSource(
   existing: NonNullable<Awaited<ReturnType<typeof getPublicationAdmin>>>,
   actorId: string,
 ): Promise<Response> {
+  if (existing.status === "published" || existing.status === "scheduled") {
+    // Replacing the source restarts scanning and parsing, which would take a
+    // live report offline (or leave a stale schedule) without warning.
+    return apiError(
+      "Move this report back to Draft before replacing its source PDF.",
+      409,
+    );
+  }
   const upload = await readBoundedMultipartForm(request, {
     maxBytes: MAX_PUBLICATION_MULTIPART_BYTES,
     invalidMessage: "The replacement upload could not be read.",
@@ -454,7 +465,6 @@ async function replaceSource(
   });
 
   const now = Date.now();
-  const nextRevision = ((await database().prepare("SELECT COALESCE(MAX(revision_number), 0) AS value FROM publication_revisions WHERE publication_id = ?").bind(existing.id).first<{ value: number }>())?.value ?? 0) + 1;
   const warning: unknown[] = [];
   try {
     const scanJobId = createId("job");
@@ -462,13 +472,12 @@ async function replaceSource(
       database().prepare(
         `INSERT INTO publication_revisions
          (id, publication_id, revision_number, source_pdf_key, web_body, parse_warnings, note, created_by, created_at)
-         SELECT ?, id, ?, source_pdf_key, web_body, parse_warnings,
+         SELECT ?, id, (SELECT COALESCE(MAX(revision_number), 0) + 1 FROM publication_revisions WHERE publication_id = publications.id), source_pdf_key, web_body, parse_warnings,
            'Source replaced; prior approved content preserved', ?, ?
          FROM publications
          WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ?`,
       ).bind(
         createId("revision"),
-        nextRevision,
         actorId,
         now,
         existing.id,
@@ -478,7 +487,7 @@ async function replaceSource(
       ),
       database().prepare(
         `UPDATE publications SET source_pdf_key = ?, status = 'uploaded', parse_warnings = ?,
-          parse_error = NULL, updated_by = ?, updated_at = ?
+          parse_error = NULL, scheduled_at = NULL, updated_by = ?, updated_at = ?
           WHERE id = ? AND source_pdf_key IS ? AND status = ? AND updated_at = ?`,
       ).bind(
         key,
@@ -526,7 +535,7 @@ async function replaceSource(
     action: "publication.source_replaced",
     entityType: "publication",
     entityId: existing.id,
-    metadata: { revisionNumber: nextRevision, scanStatus: "quarantined" },
+    metadata: { scanStatus: "quarantined" },
   });
   return Response.json({ ok: true, message: "Replacement stored. Security scan queued; prior editorial content was preserved." });
 }

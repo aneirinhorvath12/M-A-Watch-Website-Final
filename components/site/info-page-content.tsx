@@ -1,3 +1,4 @@
+import { BrandValues, MissionVision } from "@/components/site/brand-elements";
 import Image from "next/image";
 import Link from "next/link";
 import { PageIntro } from "@/components/site/page-intro";
@@ -99,6 +100,9 @@ export function InfoPageContentView({
           ))}
         </div>
       </section>
+
+      <MissionVision />
+      <BrandValues />
     </main>
   );
 }

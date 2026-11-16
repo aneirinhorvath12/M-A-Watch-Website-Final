@@ -196,6 +196,21 @@ export function managedTeamPhotoPath(
   return `/api/team/images/${memberId}/${assetId}`;
 }
 
+/**
+ * True when a submitted photo path points at the managed team-image route,
+ * regardless of letter case or percent-encoding, so the "no reuse of managed
+ * assets" guard cannot be sidestepped with `/API/...` or `/%61pi/...`.
+ */
+export function isManagedTeamPhotoReference(value: string): boolean {
+  let candidate = value.trim();
+  try {
+    candidate = decodeURIComponent(candidate);
+  } catch {
+    // Leave undecodable input as-is; normaliseTeamPhotoPath rejects it.
+  }
+  return /^\/api\/team\/images\//i.test(candidate);
+}
+
 export function managedTeamPhotoKey(path: string): string | null {
   const match = path.match(
     /^\/api\/team\/images\/(team_[0-9a-f-]{36})\/([0-9a-f-]{36}\.(?:jpe?g|png|webp))$/i,

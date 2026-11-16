@@ -6,6 +6,7 @@ import { ActionForm } from "@/components/admin/ActionForm";
 import { PageHeader, Panel, StatusBadge, adminStyles as styles } from "@/components/admin/AdminUI";
 import { PublicationJobStatus } from "@/components/admin/PublicationJobStatus";
 import { StructuredBlockEditor } from "@/components/admin/StructuredBlockEditor";
+import { requireAdmin } from "@/lib/admin-auth";
 import { formatAdminDate, getPublicationAdmin, titleCaseStatus } from "@/lib/admin-data";
 import { publicationCoverFromStored } from "@/lib/managed-images";
 import { resolveMalwareProvider } from "@/lib/malware-provider";
@@ -32,6 +33,7 @@ function londonDateTimeValue(value: number | null): string {
 
 export default async function PublicationReviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  await requireAdmin(`/admin/publications/${encodeURIComponent(id)}`);
   const publication = await getPublicationAdmin(id);
   if (!publication) notFound();
   const [revisions, jobs, object] = await Promise.all([

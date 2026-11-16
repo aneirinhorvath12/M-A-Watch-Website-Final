@@ -33,7 +33,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ slu
 
   return new Response(object.body, {
     headers: {
-      "Cache-Control": isPublic ? "public, max-age=300, s-maxage=300" : "private, no-store, max-age=0",
+      "Cache-Control": isPublic ? "public, max-age=300, s-maxage=300, must-revalidate" : "private, no-store, max-age=0",
       "Content-Length": String(object.size),
       "Content-Type": contentType,
       "Cross-Origin-Resource-Policy": "same-origin",

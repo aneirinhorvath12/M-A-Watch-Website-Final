@@ -3,6 +3,10 @@ import type { ArticleBlock } from "@/lib/publications/types";
 import { InlineContent } from "./InlineContent";
 import styles from "./publications.module.css";
 
+function isExternalHref(href: string): boolean {
+  return /^(?:https?:)?\/\//i.test(href.trim());
+}
+
 function renderHeading(block: Extract<ArticleBlock, { type: "heading" }>) {
   if (block.level === 2) {
     return (
@@ -114,11 +118,16 @@ export function ArticleBody({
               <section className={styles.references} key={block.id} aria-labelledby={`${block.id}-title`}>
                 <h2 id={`${block.id}-title`}>{block.title ?? "References"}</h2>
                 <ol>
-                  {block.entries.map((entry) => (
-                    <li key={`${block.id}-${entry.label}`}>
+                  {block.entries.map((entry, entryIndex) => (
+                    <li key={`${block.id}-${entryIndex}-${entry.label}`}>
                       <span className={styles.referenceLabel}>{entry.label}</span>
                       {entry.href ? (
-                        <a href={entry.href} rel="noreferrer" target="_blank">
+                        <a
+                          href={entry.href}
+                          {...(isExternalHref(entry.href)
+                            ? { rel: "noopener noreferrer", target: "_blank" }
+                            : {})}
+                        >
                           {entry.title}
                         </a>
                       ) : (

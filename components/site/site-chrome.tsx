@@ -5,8 +5,17 @@ import type { ReactNode } from "react";
 import { AnalyticsTracker } from "./analytics-tracker";
 import { SiteFooter } from "./site-footer";
 import { SiteHeader } from "./site-header";
+import type { SiteContactContent } from "@/lib/site-content";
 
-export function SiteChrome({ children }: { children: ReactNode }) {
+export function SiteChrome({
+  children,
+  siteContact,
+  applicationsOpen,
+}: {
+  children: ReactNode;
+  siteContact: SiteContactContent;
+  applicationsOpen: boolean | null;
+}) {
   const pathname = usePathname() ?? "/";
 
   if (pathname.startsWith("/admin")) {
@@ -18,11 +27,11 @@ export function SiteChrome({ children }: { children: ReactNode }) {
   return (
     <>
       <AnalyticsTracker />
-      <SiteHeader />
+      <SiteHeader applicationsOpen={applicationsOpen} />
       <div id="main-content" tabIndex={-1} className="site-main">
         {children}
       </div>
-      {contentIncludesFooterPreview ? null : <SiteFooter />}
+      {contentIncludesFooterPreview ? null : <SiteFooter content={siteContact} />}
     </>
   );
 }

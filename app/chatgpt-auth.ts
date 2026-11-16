@@ -1,3 +1,4 @@
+import { env } from "cloudflare:workers";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -20,6 +21,7 @@ const CALLBACK_PATH = "/callback";
 
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
+  if (!isTrustedIdentityHost(requestHeaders.get("host"))) return null;
   const userId = requestHeaders.get(USER_ID_HEADER);
   const email = requestHeaders.get(USER_EMAIL_HEADER);
   if (!userId || !email) return null;
@@ -87,4 +89,25 @@ function safeDecodeURIComponent(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Identity headers are only trustworthy when they were set by the hosting
+ * platform's authenticating proxy. When ADMIN_IDENTITY_HOSTS is configured
+ * (comma-separated hostnames), requests that reach the Worker on any other
+ * host, such as a directly exposed workers.dev route, are treated as
+ * anonymous even if they carry identity headers.
+ */
+export function isTrustedIdentityHost(
+  hostHeader: string | null,
+  configured: string | undefined = (env as { ADMIN_IDENTITY_HOSTS?: string })
+    .ADMIN_IDENTITY_HOSTS,
+): boolean {
+  const allowed = (configured ?? "")
+    .split(",")
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+  if (!allowed.length) return true;
+  const host = (hostHeader ?? "").trim().toLowerCase().replace(/:\d+$/, "");
+  return Boolean(host) && allowed.includes(host);
 }

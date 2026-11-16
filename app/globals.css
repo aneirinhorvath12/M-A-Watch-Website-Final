@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@fontsource/montserrat/latin-500.css";
 
 :root {
   --color-blue: #347dcf;
@@ -16,8 +17,18 @@
   --color-white: #ffffff;
   --color-border: #d9d9d6;
   --color-error: #a52a2a;
-  --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
-  --font-sans: Inter, "Avenir Next", "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+  /* Brand guidelines: Helvetica Neue (Light for display, Regular for text),
+     Times New Roman as the editorial serif, and the Montserrat-style
+     geometric logotype. */
+  --font-display: "Helvetica Neue", Helvetica, "Neue Haas Grotesk Display Pro", Arial, sans-serif;
+  --font-sans: "Helvetica Neue", Helvetica, Arial, "Segoe UI", sans-serif;
+  --font-serif-accent: "Times New Roman", Times, Georgia, serif;
+  --font-logotype: "Montserrat", "Avenir Next", "Century Gothic", sans-serif;
+  --display-weight: 300;
+  --display-tracking: -0.025em;
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
   --site-width: 1240px;
   --site-gutter: clamp(1.25rem, 4vw, 4rem);
   --section-space: clamp(5rem, 10vw, 9rem);
@@ -28,7 +39,7 @@
   --color-background: var(--color-paper);
   --color-foreground: var(--color-ink);
   --font-sans: var(--font-sans);
-  --font-serif: var(--font-display);
+  --font-serif: var(--font-serif-accent);
 }
 
 *,
@@ -171,9 +182,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(2.65rem, 5vw, 5rem);
-  font-weight: 500;
-  letter-spacing: -0.045em;
-  line-height: 0.98;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .section-heading > p {
@@ -314,12 +325,12 @@ input[type="file"] {
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 0.7rem;
+  gap: 0.65rem;
   color: var(--color-ink);
-  font-family: var(--font-display);
-  font-size: 1.2rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  font-family: var(--font-logotype);
+  font-size: 1.15rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   line-height: 1;
   text-decoration: none;
   text-transform: uppercase;
@@ -607,9 +618,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(3.5rem, 6.8vw, 7rem);
-  font-weight: 500;
-  letter-spacing: -0.06em;
-  line-height: 0.92;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .home-hero__lede {
@@ -685,9 +696,9 @@ input[type="file"] {
   margin-block: 2rem 1.5rem;
   font-family: var(--font-display);
   font-size: clamp(2.3rem, 4.2vw, 4.4rem);
-  font-weight: 500;
-  letter-spacing: -0.055em;
-  line-height: 0.85;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .deal-note__arrow {
@@ -787,9 +798,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(2.5rem, 4.8vw, 5rem);
-  font-weight: 500;
-  letter-spacing: -0.045em;
-  line-height: 1.03;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .home-intro__body {
@@ -835,6 +846,7 @@ input[type="file"] {
 .area-card__number {
   align-self: flex-end;
   font-family: var(--font-display);
+  font-weight: var(--display-weight);
   font-size: 1.2rem;
 }
 
@@ -853,9 +865,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(2.5rem, 3.8vw, 4rem);
-  font-weight: 500;
-  letter-spacing: -0.05em;
-  line-height: 1;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .area-card > p:not(.area-card__label) {
@@ -956,7 +968,7 @@ input[type="file"] {
   position: relative;
   z-index: 1;
   align-self: center;
-  font-family: var(--font-display);
+  font-family: var(--font-serif-accent);
   font-size: clamp(8rem, 16vw, 13rem);
   font-weight: 500;
   letter-spacing: -0.1em;
@@ -987,8 +999,8 @@ input[type="file"] {
   margin: 0.85rem 0 0.75rem;
   font-family: var(--font-display);
   font-size: clamp(1.55rem, 2.5vw, 2.25rem);
-  font-weight: 500;
-  letter-spacing: -0.035em;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
   line-height: 1.08;
 }
 
@@ -1026,9 +1038,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(3rem, 5.5vw, 5.5rem);
-  font-weight: 500;
-  letter-spacing: -0.05em;
-  line-height: 0.95;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .impact-section__copy > p:not(.section-index) {
@@ -1064,9 +1076,10 @@ input[type="file"] {
 .impact-stats dd {
   margin: 0;
   font-family: var(--font-display);
+  font-weight: var(--display-weight);
   font-size: clamp(3rem, 6vw, 5.5rem);
-  letter-spacing: -0.06em;
-  line-height: 0.8;
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .home-cta { background: var(--color-sky); }
@@ -1083,9 +1096,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(3rem, 6.2vw, 6.2rem);
-  font-weight: 500;
-  letter-spacing: -0.055em;
-  line-height: 0.9;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .home-cta__panel > div:last-child > p {
@@ -1129,9 +1142,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(3.8rem, 7.5vw, 7.6rem);
-  font-weight: 500;
-  letter-spacing: -0.06em;
-  line-height: 0.9;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .page-intro--dark .eyebrow { color: var(--color-sky); }
@@ -1230,9 +1243,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(2.4rem, 4vw, 4rem);
-  font-weight: 500;
-  letter-spacing: -0.04em;
-  line-height: 1;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .team-group__header div > p {
@@ -1299,8 +1312,9 @@ input[type="file"] {
   position: relative;
   z-index: 1;
   font-family: var(--font-display);
+  font-weight: var(--display-weight);
   font-size: clamp(3.8rem, 7vw, 6.5rem);
-  letter-spacing: -0.08em;
+  letter-spacing: var(--display-tracking);
 }
 
 .team-card__portrait-line {
@@ -1330,8 +1344,8 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: 1.75rem;
-  font-weight: 500;
-  letter-spacing: -0.03em;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
 }
 
 .team-card__content > p:last-child {
@@ -1358,9 +1372,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(2.8rem, 5vw, 5rem);
-  font-weight: 500;
-  letter-spacing: -0.05em;
-  line-height: 0.95;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 /* Info */
@@ -1378,9 +1392,9 @@ input[type="file"] {
   margin: clamp(4rem, 8vw, 7rem) 0 2rem;
   font-family: var(--font-display);
   font-size: clamp(2.8rem, 5.5vw, 5.5rem);
-  font-weight: 500;
-  letter-spacing: -0.05em;
-  line-height: 0.98;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .info-managed__flow > .info-managed__heading:first-child { margin-top: 0; }
@@ -1391,9 +1405,9 @@ input[type="file"] {
   margin: 2.5rem 0 1rem;
   font-family: var(--font-display);
   font-size: clamp(2rem, 3.5vw, 3.5rem);
-  font-weight: 500;
-  letter-spacing: -0.04em;
-  line-height: 1;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .info-managed__paragraph {
@@ -1451,9 +1465,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(2.8rem, 5.6vw, 5.6rem);
-  font-weight: 500;
-  letter-spacing: -0.055em;
-  line-height: 0.92;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .info-managed__cta > div:last-child > p {
@@ -1487,9 +1501,9 @@ input[type="file"] {
   margin: 0 0 4rem;
   font-family: var(--font-display);
   font-size: clamp(3rem, 6vw, 6rem);
-  font-weight: 500;
-  letter-spacing: -0.05em;
-  line-height: 0.95;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .mission-grid {
@@ -1520,9 +1534,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(2rem, 3.6vw, 3.5rem);
-  font-weight: 500;
-  letter-spacing: -0.04em;
-  line-height: 1;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .mission-grid article > p:last-child {
@@ -1560,8 +1574,8 @@ input[type="file"] {
   margin: 6rem 0 1rem;
   font-family: var(--font-display);
   font-size: 1.75rem;
-  font-weight: 500;
-  letter-spacing: -0.035em;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
   line-height: 1.05;
 }
 
@@ -1600,7 +1614,7 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: 2rem;
-  font-weight: 500;
+  font-weight: var(--display-weight);
 }
 
 .values-grid p {
@@ -1628,9 +1642,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(2.4rem, 4vw, 3.8rem);
-  font-weight: 500;
-  letter-spacing: -0.045em;
-  line-height: 1;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .apply-overview__aside > p:not(.section-index) {
@@ -1699,9 +1713,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: 2rem;
-  font-weight: 500;
-  letter-spacing: -0.03em;
-  line-height: 1;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .form-section-heading p {
@@ -1794,6 +1808,7 @@ input[type="file"] {
   border: 1px solid var(--color-border);
   background: var(--color-paper);
   font-family: var(--font-display);
+  font-weight: var(--display-weight);
   font-size: 1.25rem;
   transition: background-color 160ms ease, border-color 160ms ease;
 }
@@ -1896,9 +1911,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(3rem, 6vw, 6rem);
-  font-weight: 500;
-  letter-spacing: -0.055em;
-  line-height: 0.95;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .confirmation-page__lede {
@@ -1928,7 +1943,7 @@ input[type="file"] {
   margin: 0 0 1.2rem;
   font-family: var(--font-display);
   font-size: 2rem;
-  font-weight: 500;
+  font-weight: var(--display-weight);
 }
 
 .confirmation-next ol {
@@ -2010,9 +2025,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(1.8rem, 3vw, 2.6rem);
-  font-weight: 500;
-  letter-spacing: -0.035em;
-  line-height: 1;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .policy-layout__content section > div {
@@ -2038,7 +2053,7 @@ input[type="file"] {
   right: -0.04em;
   bottom: -0.26em;
   color: rgba(154, 197, 232, 0.1);
-  font-family: var(--font-display);
+  font-family: var(--font-serif-accent);
   font-size: min(46vw, 36rem);
   letter-spacing: -0.1em;
   line-height: 1;
@@ -2051,9 +2066,9 @@ input[type="file"] {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(4rem, 9vw, 9rem);
-  font-weight: 500;
-  letter-spacing: -0.06em;
-  line-height: 0.88;
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
 }
 
 .not-found-page__content > p:not(.eyebrow) {
@@ -2237,4 +2252,266 @@ input[type="file"] {
   body { background: white; color: black; }
   .site-shell { max-width: none; padding-inline: 0; }
   a { color: black; }
+}
+
+/* ---------------------------------------------------------------------------
+   Brand guidelines layer: rounded forms, the two-tone wave, values and
+   mission/vision. Kept last so it refines the base layout above.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --color-wave: #6aa5ea;
+  --shadow-card: 0 18px 48px rgba(44, 65, 81, 0.12);
+}
+
+.site-brand > span {
+  /* Logotype optical size matches the bull mark's cap height. */
+  padding-top: 0.1em;
+}
+
+.button {
+  border-radius: var(--radius-sm);
+}
+
+.reports-menu__panel {
+  border-radius: var(--radius-md);
+}
+
+.deal-note {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card), 1rem 1rem 0 rgba(154, 197, 232, 0.16);
+}
+
+.area-grid {
+  gap: clamp(1rem, 2vw, 1.5rem);
+  background: none;
+  border: 0;
+}
+
+.area-card {
+  border-radius: var(--radius-lg);
+}
+
+.area-card--02 {
+  border: 1px solid var(--color-border);
+  background: var(--color-white);
+}
+
+.featured-card__visual {
+  border-radius: var(--radius-lg);
+}
+
+/* Brand slide "What is M&A Watch?": white tiles with Medium Blue figures. */
+.impact-stats {
+  gap: 1rem;
+  border: 0;
+}
+
+.impact-stats div {
+  min-height: 10rem;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: var(--color-white);
+  color: var(--color-blue);
+}
+
+.impact-stats dt {
+  color: var(--color-midnight);
+  font-weight: 700;
+}
+
+.impact-stats dd {
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.home-cta__panel,
+.info-managed__cta {
+  border-radius: var(--radius-lg);
+}
+
+.form-field input[type="text"],
+.form-field input[type="email"] {
+  padding-inline: 0.9rem;
+  border: 1px solid var(--color-grey);
+  border-radius: var(--radius-sm);
+  background: var(--color-white);
+}
+
+/* Two-tone wave closing the homepage hero. */
+.brand-wave {
+  position: relative;
+  margin-top: clamp(1rem, 4vw, 3rem);
+}
+
+.brand-wave__curve {
+  display: block;
+  width: 100%;
+  height: clamp(4.5rem, 11vw, 10rem);
+}
+
+.brand-wave__back { fill: var(--color-blue); }
+.brand-wave__front { fill: var(--color-wave); }
+
+.brand-wave__band {
+  margin-top: -1px;
+  background: var(--color-wave);
+  color: var(--color-midnight);
+}
+
+.brand-wave .home-hero__rule {
+  border-top: 0;
+  color: var(--color-midnight);
+  font-weight: 700;
+}
+
+.brand-wave .home-hero__rule span {
+  padding-block: 1rem 1.1rem;
+  border-right: 0;
+}
+
+/* Values and ethos */
+.brand-values {
+  background: var(--color-sky);
+}
+
+.brand-values__heading {
+  margin-bottom: clamp(2rem, 4vw, 3.5rem);
+}
+
+.brand-values .section-index {
+  color: var(--color-midnight);
+}
+
+.brand-values__title {
+  max-width: 18ch;
+  margin: 0;
+  color: var(--color-charcoal);
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 5vw, 4.4rem);
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking);
+  line-height: 1.04;
+}
+
+.brand-values__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(1rem, 2vw, 1.5rem);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.brand-values__card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: clamp(1.25rem, 2.5vw, 1.75rem);
+  border-radius: var(--radius-lg);
+  background: var(--color-paper);
+  color: var(--color-charcoal);
+  font-size: clamp(1rem, 1.4vw, 1.15rem);
+  line-height: 1.45;
+}
+
+.brand-values__card p {
+  margin: 0;
+}
+
+.brand-values__card strong {
+  font-weight: 700;
+}
+
+.brand-values__icon {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  flex: none;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  box-shadow: inset 0 0 0 1px rgba(44, 65, 81, 0.12);
+  color: var(--color-ink);
+}
+
+.brand-values__icon svg {
+  width: 1.9rem;
+  height: 1.9rem;
+}
+
+/* Mission and vision */
+.mission-vision {
+  padding-top: 0;
+}
+
+.mission-vision__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(1rem, 2vw, 1.5rem);
+}
+
+.mission-vision__card {
+  padding: clamp(1.75rem, 4vw, 3rem);
+  border-radius: var(--radius-lg);
+  background: var(--color-blue);
+  color: var(--color-white);
+}
+
+.mission-vision__card .eyebrow {
+  color: var(--color-white);
+}
+
+.mission-vision__card--dark {
+  background: var(--color-midnight);
+}
+
+.mission-vision__card--dark .eyebrow {
+  color: var(--color-sky);
+}
+
+.mission-vision__text {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 2.2vw, 1.9rem);
+  font-weight: var(--display-weight);
+  line-height: 1.3;
+}
+
+@media (max-width: 860px) {
+  .brand-values__grid,
+  .mission-vision__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-wave .home-hero__rule {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .brand-wave .home-hero__rule span:nth-child(-n + 2) {
+    border-bottom: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .area-card,
+  .brand-values__card,
+  .featured-card__visual {
+    transition: transform 220ms ease, box-shadow 220ms ease;
+  }
+
+  .area-card:hover,
+  .brand-values__card:hover,
+  .featured-card:hover .featured-card__visual {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-card);
+  }
+}
+
+.home-hero__grid {
+  padding-bottom: clamp(2rem, 4vw, 3rem);
+}
+
+.brand-wave {
+  margin-top: 0;
 }

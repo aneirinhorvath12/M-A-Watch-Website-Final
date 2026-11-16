@@ -1,3 +1,4 @@
+import { BrandValues, BrandWave } from "@/components/site/brand-elements";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -108,9 +109,11 @@ export function HomePageContent({
             ) : null}
           </div>
         </div>
-        <div className="home-hero__rule" aria-hidden="true">
-          {withContentKeys(hero.ruleLabels, "hero-rule").map(({ key, value }) => <span key={key}>{value}</span>)}
-        </div>
+        <BrandWave>
+          <div className="site-shell home-hero__rule" aria-hidden="true">
+            {withContentKeys(hero.ruleLabels, "hero-rule").map(({ key, value }) => <span key={key}>{value}</span>)}
+          </div>
+        </BrandWave>
       </section>
 
       <section className="home-intro section-pad">
@@ -152,6 +155,8 @@ export function HomePageContent({
           </div>
         </div>
       </section>
+
+      <BrandValues />
 
       <section className="featured-work section-pad" aria-labelledby="featured-title">
         <div className="site-shell">

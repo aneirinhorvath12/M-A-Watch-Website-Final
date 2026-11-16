@@ -68,7 +68,7 @@ export function SiteHeader({
       <header className="site-header">
         <div className="site-notice">
           <div className="site-shell site-notice__inner">
-            <span>Student-led insight into history&apos;s most impactful deals</span>
+            <span>Student-led insights into history&apos;s most impactful deals</span>
             <Link href="/apply" onClick={closeMenu}>
               <span>
                 {applicationsOpen === null
@@ -85,7 +85,7 @@ export function SiteHeader({
           <Link className="site-brand" href="/" onClick={closeMenu} aria-label="M&A Watch home">
             <Image
               className="site-brand__mark"
-              src="/brand/logo-black-mark.png"
+              src="/brand/logo-black-mark-96.png"
               width={36}
               height={39}
               alt=""

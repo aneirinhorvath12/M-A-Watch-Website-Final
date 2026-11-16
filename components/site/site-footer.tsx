@@ -33,9 +33,9 @@ export function SiteFooter({
           <Link href="/" className="site-brand site-brand--footer" aria-label="M&A Watch home">
             <Image
               className="site-brand__mark"
-              src="/brand/logo-white-mark.png"
+              src="/brand/logo-white-mark-96.png"
               width={36}
-              height={39}
+              height={32}
               alt=""
               unoptimized
             />

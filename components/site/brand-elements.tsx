@@ -134,3 +134,48 @@ export function MissionVision() {
     </section>
   );
 }
+
+/**
+ * A slow, decorative ticker of research themes and recent publication titles
+ * across the wave band. Hidden from assistive technology (the same titles are
+ * linked in "Latest research") and static when reduced motion is requested.
+ */
+export function DealTicker({
+  labels,
+  titles,
+}: {
+  labels: readonly string[];
+  titles: readonly string[];
+}) {
+  const items: string[] = [];
+  const longest = Math.max(labels.length, titles.length);
+  for (let index = 0; index < longest; index += 1) {
+    if (labels[index]) items.push(labels[index]);
+    if (titles[index]) items.push(titles[index]);
+  }
+  if (!items.length) return null;
+  const sequence = (copy: number) =>
+    items.map((item, index) => (
+      <li key={`${copy}-${index}`}>
+        <span className="deal-ticker__mark" />
+        {item}
+      </li>
+    ));
+  return (
+    <div className="deal-ticker" aria-hidden="true">
+      <ul className="deal-ticker__track">
+        {sequence(0)}
+        {sequence(1)}
+      </ul>
+    </div>
+  );
+}
+
+/** Oversized wordmark that anchors the footer. */
+export function FooterWordmark() {
+  return (
+    <div className="footer-wordmark" aria-hidden="true">
+      M&amp;A Watch
+    </div>
+  );
+}

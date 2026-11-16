@@ -1,4 +1,4 @@
-import { BrandValues, BrandWave } from "@/components/site/brand-elements";
+import { BrandValues, BrandWave, DealTicker } from "@/components/site/brand-elements";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -110,9 +110,10 @@ export function HomePageContent({
           </div>
         </div>
         <BrandWave>
-          <div className="site-shell home-hero__rule" aria-hidden="true">
-            {withContentKeys(hero.ruleLabels, "hero-rule").map(({ key, value }) => <span key={key}>{value}</span>)}
-          </div>
+          <DealTicker
+            labels={hero.ruleLabels}
+            titles={featured.map((publication) => publication.title)}
+          />
         </BrandWave>
       </section>
 
@@ -232,6 +233,11 @@ export function HomePageContent({
       </section>
 
       <section className="home-cta section-pad">
+        <svg className="home-cta__lines" viewBox="0 0 1440 520" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+          <path d="M0 470C420 470 900 380 1440 90" />
+          <path d="M0 500C460 500 960 420 1440 170" />
+          <path d="M0 520C520 520 1020 455 1440 250" />
+        </svg>
         <div className="site-shell home-cta__panel">
           <div>
             <p className="eyebrow">{applicationSettings.open ? application.openEyebrow : application.closedEyebrow}</p>

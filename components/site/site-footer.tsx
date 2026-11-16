@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { FooterWordmark } from "@/components/site/brand-elements";
 import {
   DEFAULT_SITE_CONTACT,
   type SiteContactContent,
@@ -85,6 +86,7 @@ export function SiteFooter({
         </div>
       </div>
 
+      <FooterWordmark />
       <div className="site-shell site-footer__bottom">
         <p>© {new Date().getFullYear()} M&amp;A Watch. All rights reserved.</p>
         <p>Independent analysis. Not investment or legal advice.</p>

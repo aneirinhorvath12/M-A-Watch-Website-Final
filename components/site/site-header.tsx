@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const navigation = [
   { href: "/", label: "Home" },
@@ -34,29 +34,31 @@ function isCurrent(pathname: string, href: string) {
   return href === "/" ? pathname === href : pathname.startsWith(href);
 }
 
-export function SiteHeader() {
+export function SiteHeader({
+  applicationsOpen = null,
+}: {
+  /** Server-loaded recruitment state; null when it could not be determined. */
+  applicationsOpen?: boolean | null;
+} = {}) {
   const pathname = usePathname() ?? "/";
   const [menuOpen, setMenuOpen] = useState(false);
-  const [applicationsOpen, setApplicationsOpen] = useState<boolean | null>(null);
+  const reportsMenuRef = useRef<HTMLDetailsElement>(null);
   const reportsCurrent =
     pathname === "/reports" ||
     pathname.startsWith("/reports/") ||
     pathname.startsWith("/markets");
 
-  const closeMenu = () => setMenuOpen(false);
+  const closeReportsMenu = () => {
+    if (reportsMenuRef.current) reportsMenuRef.current.open = false;
+  };
+  const closeMenu = () => {
+    setMenuOpen(false);
+    closeReportsMenu();
+  };
 
   useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/applications/status", { signal: controller.signal })
-      .then(async (response): Promise<{ open?: boolean } | null> =>
-        response.ok ? (await response.json()) as { open?: boolean } : null,
-      )
-      .then((value) => {
-        if (typeof value?.open === "boolean") setApplicationsOpen(value.open);
-      })
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, []);
+    closeReportsMenu();
+  }, [pathname]);
 
   return (
     <>
@@ -68,7 +70,7 @@ export function SiteHeader() {
           <div className="site-shell site-notice__inner">
             <span>Student-led insight into history&apos;s most impactful deals</span>
             <Link href="/apply" onClick={closeMenu}>
-              <span aria-atomic="true" aria-live="polite" role="status">
+              <span>
                 {applicationsOpen === null
                   ? "View application information"
                   : applicationsOpen
@@ -124,10 +126,9 @@ export function SiteHeader() {
                 </Link>
               </li>
               <li className="reports-menu">
-                <details>
+                <details ref={reportsMenuRef}>
                   <summary
                     className={`primary-nav__link${reportsCurrent ? " is-current" : ""}`}
-                    aria-current={reportsCurrent ? "page" : undefined}
                   >
                     Reports <span className="reports-menu__chevron" aria-hidden="true">⌄</span>
                   </summary>

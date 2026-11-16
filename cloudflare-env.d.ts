@@ -25,6 +25,7 @@ declare namespace Cloudflare {
     REQUIRE_PRODUCTION_SERVICES?: string;
     ANALYTICS_ENABLED?: string;
     INITIAL_SUPER_USER_EMAIL?: string;
+    ADMIN_IDENTITY_HOSTS?: string;
     MAINTENANCE_TOKEN?: string;
     MAINTENANCE_HEARTBEAT_URL?: string;
     MAINTENANCE_ALERT_WEBHOOK_URL?: string;

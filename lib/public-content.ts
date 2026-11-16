@@ -116,6 +116,39 @@ export async function hasManagedTeamRecords(): Promise<boolean> {
   }
 }
 
+async function loadPublicApplicationSettings(): Promise<PublicApplicationSettings | null> {
+  await ensureDatabase();
+  const row = await database()
+    .prepare(
+      `SELECT open, introduction, closed_message, notification_recipients,
+              privacy_policy_version, retention_days
+       FROM application_settings WHERE id = 1`,
+    )
+    .first<{
+      open: number;
+      introduction: string;
+      closed_message: string;
+      notification_recipients: string;
+      privacy_policy_version: string;
+      retention_days: number | null;
+    }>();
+  if (!row) return null;
+  const readiness = await currentRecruitmentIntakeReadiness({
+    retentionDays: row.retention_days,
+    privacyPolicyVersion: row.privacy_policy_version,
+    notificationRecipients: safeJson<string[]>(
+      row.notification_recipients,
+      [],
+    ),
+  });
+  return {
+    open: Boolean(row.open) && Boolean(readiness?.ready),
+    introduction: row.introduction,
+    closedMessage: row.closed_message,
+    privacyPolicyVersion: row.privacy_policy_version,
+  };
+}
+
 export async function getPublicApplicationSettings(): Promise<PublicApplicationSettings> {
   const fallback = {
     open: false,
@@ -124,40 +157,18 @@ export async function getPublicApplicationSettings(): Promise<PublicApplicationS
     privacyPolicyVersion: CURRENT_APPLICATION_PRIVACY_VERSION,
   };
   try {
-    await ensureDatabase();
-    const row = await database()
-      .prepare(
-        `SELECT open, introduction, closed_message, notification_recipients,
-                privacy_policy_version, retention_days
-         FROM application_settings WHERE id = 1`,
-      )
-      .first<{
-        open: number;
-        introduction: string;
-        closed_message: string;
-        notification_recipients: string;
-        privacy_policy_version: string;
-        retention_days: number | null;
-      }>();
-    const readiness = row
-      ? await currentRecruitmentIntakeReadiness({
-          retentionDays: row.retention_days,
-          privacyPolicyVersion: row.privacy_policy_version,
-          notificationRecipients: safeJson<string[]>(
-            row.notification_recipients,
-            [],
-          ),
-        })
-      : null;
-    return row
-      ? {
-          open: Boolean(row.open) && Boolean(readiness?.ready),
-          introduction: row.introduction,
-          closedMessage: row.closed_message,
-          privacyPolicyVersion: row.privacy_policy_version,
-        }
-      : fallback;
+    return (await loadPublicApplicationSettings()) ?? fallback;
   } catch {
     return fallback;
+  }
+}
+
+/** Recruitment state for the site header; null when it cannot be determined. */
+export async function getPublicApplicationsOpen(): Promise<boolean | null> {
+  try {
+    const settings = await loadPublicApplicationSettings();
+    return settings ? settings.open : null;
+  } catch {
+    return null;
   }
 }

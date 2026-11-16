@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { PageHeader, adminStyles as styles } from "@/components/admin/AdminUI";
+import { requireAdmin } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 
-export default function NewPublicationPage() {
+export default async function NewPublicationPage() {
+  await requireAdmin("/admin/publications/new");
   const today = new Date().toISOString().slice(0, 10);
   return (
     <>

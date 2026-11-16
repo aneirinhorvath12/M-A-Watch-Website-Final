@@ -5,6 +5,7 @@ import {
   inspectTeamPhoto,
   isValidLinkedInUrl,
   managedTeamPhotoKey,
+  isManagedTeamPhotoReference,
   managedTeamPhotoPath,
   normaliseTeamPhotoPath,
   readTeamMemberRequest,
@@ -56,7 +57,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (photo && removePhoto) return apiError("Choose either a replacement photograph or remove the current photograph.", 422);
   if (photo && !photoAlt) return apiError("Add alternative text before uploading the photograph.", 422);
   if (
-    requestedPhotoKey.startsWith("/api/team/images/") &&
+    isManagedTeamPhotoReference(requestedPhotoKey) &&
     requestedPhotoKey !== current.photo_key
   ) {
     return apiError("A managed photograph cannot be reused across team records.", 422);
@@ -148,7 +149,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const oldKey = managedTeamPhotoKey(current.photo_key);
     if (oldKey) {
       const stillReferenced = await database()
-        .prepare("SELECT 1 AS present FROM team_members WHERE photo_key = ? LIMIT 1")
+        .prepare("SELECT 1 AS present FROM team_members WHERE lower(photo_key) = lower(?) LIMIT 1")
         .bind(current.photo_key)
         .first<{ present: number }>();
       if (!stillReferenced) await privateFiles().delete(oldKey);

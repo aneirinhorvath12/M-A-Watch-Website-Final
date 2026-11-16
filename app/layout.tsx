@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
 import { SiteChrome } from "@/components/site/site-chrome";
+import {
+  getPublicApplicationsOpen,
+  getPublishedSiteContact,
+} from "@/lib/public-content";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -48,14 +52,24 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Loaded on the server so the header and footer SSR output reflects the
+  // published content; both loaders fall back to defaults on failure.
+  const [siteContact, applicationsOpen] = await Promise.all([
+    getPublishedSiteContact(),
+    getPublicApplicationsOpen(),
+  ]);
   return (
     <html lang="en">
-      <body><SiteChrome>{children}</SiteChrome></body>
+      <body>
+        <SiteChrome siteContact={siteContact} applicationsOpen={applicationsOpen}>
+          {children}
+        </SiteChrome>
+      </body>
     </html>
   );
 }

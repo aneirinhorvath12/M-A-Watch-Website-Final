@@ -698,6 +698,20 @@ function securityR2(entries = {}) {
   };
 }
 
+// The root layout loads the public header/footer content (published
+// site.contact and the recruitment state) for every page, including ones that
+// then deny access. Those reads (and the schema readiness seed) are public, so
+// denial assertions only require that no other D1 access happened.
+function nonChromeD1Calls(calls) {
+  return calls.filter((call) => !(
+    call.sql.includes("FROM sqlite_schema") ||
+    /^\s*INSERT OR IGNORE INTO (?:application_settings|maintenance_state)\b/.test(call.sql) ||
+    (call.sql.includes("FROM content_entries WHERE key = ? AND published_at IS NOT NULL") &&
+      call.bindings[0] === "site.contact") ||
+    /^\s*SELECT open, introduction, closed_message, notification_recipients,\s+privacy_policy_version, retention_days\s+FROM application_settings WHERE id = 1\s*$/.test(call.sql)
+  ));
+}
+
 async function fetchSecurityRoute(path, {
   d1 = securityD1(),
   r2 = securityR2(),
@@ -1384,8 +1398,8 @@ test("direct Super User page navigation redirects anonymous and regular administ
     new URL(anonymous.headers.get("location"), "https://mawatch.test").pathname,
     "/admin/login",
   );
-  assert.match(anonymous.headers.get("location") ?? "", /return_to=%2Fadmin(?:&|$)/);
-  assert.equal(anonymousD1.calls.length, 0);
+  assert.match(anonymous.headers.get("location") ?? "", /return_to=%2Fadmin%2Fusers(?:&|$)/);
+  assert.deepEqual(nonChromeD1Calls(anonymousD1.calls), []);
 
   const regularAdmin = adminRow();
   const adminD1 = securityD1({ admins: [regularAdmin] });
@@ -1405,6 +1419,75 @@ test("direct Super User page navigation redirects anonymous and regular administ
   );
 });
 
+test("anonymous admin page navigation redirects to login and preserves the deep link", async () => {
+  for (const path of [
+    "/admin/applicants",
+    "/admin/applicants/applicant_11111111-1111-4111-8111-111111111111",
+    "/admin/team",
+    "/admin/content",
+    "/admin/publications",
+    "/admin/publications/new",
+    "/admin/publications/publication_11111111-1111-4111-8111-111111111111",
+    "/admin/application-settings",
+    "/admin/audit-log",
+    "/admin/analytics",
+  ]) {
+    const anonymousD1 = securityD1();
+    const anonymous = await fetchSecurityRoute(path, {
+      d1: anonymousD1,
+      headers: { accept: "text/html" },
+    });
+    assert.match(String(anonymous.status), /^30[2378]$/, path);
+    const location = new URL(anonymous.headers.get("location"), "https://mawatch.test");
+    assert.equal(location.pathname, "/admin/login", path);
+    assert.equal(location.searchParams.get("return_to"), path);
+    assert.deepEqual(
+      nonChromeD1Calls(anonymousD1.calls),
+      [],
+      `${path} must deny anonymous visitors before loading administrative data`,
+    );
+  }
+});
+
+test("every protected admin page performs its own page-level authorization", async () => {
+  const { readdir, readFile } = await import("node:fs/promises");
+  const root = new URL("../app/admin/(protected)/", import.meta.url);
+  const pages = (await readdir(root, { recursive: true }))
+    .filter((entry) => /(?:^|\/)page\.tsx$/.test(entry));
+  assert.ok(pages.length >= 10);
+  for (const page of pages) {
+    const source = await readFile(new URL(page, root), "utf8");
+    assert.match(source, /await require(?:Admin|SuperUser)\(/, `${page} must call requireAdmin or requireSuperUser`);
+  }
+});
+
+test("the server-rendered footer reflects the published site contact content", async () => {
+  const d1 = securityD1({
+    contentEntries: [{
+      key: "site.contact",
+      draft_value: "{}",
+      published_value: JSON.stringify({
+        body: "Published footer copy rendered on the server.",
+        email: "published-contact@mawatch.test",
+        emailLabel: "Write to the published desk",
+        socialLinks: [{ label: "Published LinkedIn", href: "https://www.linkedin.com/company/published" }],
+      }),
+      published_at: Date.now(),
+    }],
+  });
+  const response = await fetchSecurityRoute("/privacy", {
+    d1,
+    headers: { accept: "text/html" },
+  });
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Published footer copy rendered on the server\./);
+  assert.match(html, /href="mailto:published-contact@mawatch\.test"/);
+  assert.match(html, /Write to the published desk/);
+  assert.match(html, /Published LinkedIn/);
+  assert.doesNotMatch(html, /<a[^>]*href="\/apply"[^>]*>(?:(?!<\/a>).)*role="status"/s);
+});
+
 test("saved content previews require an active administrator and render the draft through the public page component", async () => {
   const anonymousD1 = securityD1();
   const anonymous = await fetchSecurityRoute("/preview/content/homepage", {
@@ -1416,7 +1499,7 @@ test("saved content previews require an active administrator and render the draf
     new URL(anonymous.headers.get("location"), "https://mawatch.test").pathname,
     "/admin/login",
   );
-  assert.equal(anonymousD1.calls.length, 0);
+  assert.deepEqual(nonChromeD1Calls(anonymousD1.calls), []);
 
   const admin = adminRow();
   const d1 = securityD1({
@@ -2128,4 +2211,48 @@ test("managed team photographs are member-scoped and inactive images require an 
     { d1: activeD1, r2: publicR2 },
   );
   assert.equal(wrongAsset.status, 404);
+});
+
+test("identity headers are ignored outside the configured trusted hosts", async () => {
+  const superUser = adminRow({
+    id: TEST_SUPER_USER_ID,
+    email: "super@mawatch.test",
+    role: "super_user",
+  });
+  const untrusted = await fetchSecurityRoute("/api/admin/users", {
+    d1: securityD1({ admins: [superUser] }),
+    identity: superUser,
+    headers: { host: "ma-watch.example.workers.dev" },
+    runtime: { ADMIN_IDENTITY_HOSTS: "mawatch.test" },
+  });
+  assert.equal(untrusted.status, 401);
+
+  const trusted = await fetchSecurityRoute("/api/admin/users", {
+    d1: securityD1({ admins: [superUser] }),
+    identity: superUser,
+    headers: { host: "mawatch.test" },
+    runtime: { ADMIN_IDENTITY_HOSTS: "mawatch.test" },
+  });
+  assert.equal(trusted.status, 200);
+
+  const unconfigured = await fetchSecurityRoute("/api/admin/users", {
+    d1: securityD1({ admins: [superUser] }),
+    identity: superUser,
+    headers: { host: "ma-watch.example.workers.dev" },
+  });
+  assert.equal(unconfigured.status, 200, "the guard is opt-in");
+});
+
+test("expired administrator invitations cannot be accepted", async () => {
+  const invited = {
+    ...adminRow({ id: "user_invited", email: "invitee@mawatch.test" }),
+    external_user_id: null,
+    status: "invited",
+    invitation_expires_at: Date.now() - 1_000,
+  };
+  const response = await fetchSecurityRoute("/api/admin/users", {
+    d1: securityD1({ admins: [invited] }),
+    identity: { ...invited, external_user_id: "chatgpt-user_invited" },
+  });
+  assert.equal(response.status, 401);
 });

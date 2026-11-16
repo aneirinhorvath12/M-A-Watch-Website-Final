@@ -30,7 +30,7 @@ export async function PATCH(
   if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BYTES) {
     return apiError("The content update is too large.", 413);
   }
-  const payload = await readJsonObject(request);
+  const payload = await readJsonObject(request, MAX_REQUEST_BYTES);
   if (!payload) return apiError("The content update could not be read.", 400);
   const intent = stringValue(payload.intent, 20) || "save";
   if (intent !== "save" && intent !== "publish") {

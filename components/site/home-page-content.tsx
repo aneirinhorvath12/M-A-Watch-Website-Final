@@ -12,6 +12,19 @@ import type {
   HomepageEditorialContent,
 } from "@/lib/site-content";
 
+/**
+ * Pairs editor-managed strings with content-derived keys that stay stable when
+ * an editor removes or reorders entries (duplicates get an occurrence suffix).
+ */
+function withContentKeys(values: readonly string[], prefix: string) {
+  const seen = new Map<string, number>();
+  return values.map((value) => {
+    const occurrence = seen.get(value) ?? 0;
+    seen.set(value, occurrence + 1);
+    return { key: `${prefix}-${value}-${occurrence}`, value };
+  });
+}
+
 export function HomePageContent({
   featured,
   heroContent,
@@ -60,7 +73,7 @@ export function HomePageContent({
               </Link>
             </div>
             <ul className="home-hero__disciplines" aria-label={hero.disciplinesAriaLabel}>
-              {hero.disciplines.map((discipline, index) => <li key={`discipline-${index}`}>{discipline}</li>)}
+              {withContentKeys(hero.disciplines, "discipline").map(({ key, value }) => <li key={key}>{value}</li>)}
             </ul>
           </div>
 
@@ -96,7 +109,7 @@ export function HomePageContent({
           </div>
         </div>
         <div className="home-hero__rule" aria-hidden="true">
-          {hero.ruleLabels.map((label, index) => <span key={`hero-rule-${index}`}>{label}</span>)}
+          {withContentKeys(hero.ruleLabels, "hero-rule").map(({ key, value }) => <span key={key}>{value}</span>)}
         </div>
       </section>
 

@@ -5,6 +5,7 @@ import { createId, database, privateFiles } from "@/lib/platform";
 import {
   inspectTeamPhoto,
   isValidLinkedInUrl,
+  isManagedTeamPhotoReference,
   managedTeamPhotoPath,
   normaliseTeamPhotoPath,
   readTeamMemberRequest,
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
   if (name.length < 2 || !role || !group) return apiError("Name, role and team/group are required.", 422);
   if (!isValidLinkedInUrl(linkedInUrl)) return apiError("Enter a valid HTTPS LinkedIn URL.", 422);
   if (photo && !photoAlt) return apiError("Add alternative text before uploading the photograph.", 422);
-  if (requestedPhotoKey.startsWith("/api/team/images/")) {
+  if (isManagedTeamPhotoReference(requestedPhotoKey)) {
     return apiError("Upload the photograph for this team member instead of reusing another managed asset.", 422);
   }
   if (requestedPhotoKey && !normaliseTeamPhotoPath(requestedPhotoKey)) return apiError("Enter a same-site image path ending in AVIF, GIF, JPEG, PNG or WebP.", 422);

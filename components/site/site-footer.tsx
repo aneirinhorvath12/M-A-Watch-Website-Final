@@ -2,9 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import {
-  coerceManagedContent,
   DEFAULT_SITE_CONTACT,
   type SiteContactContent,
 } from "@/lib/site-content";
@@ -23,27 +21,11 @@ const organisationLinks = [
 ] as const;
 
 export function SiteFooter({
-  initialContent = DEFAULT_SITE_CONTACT,
-  loadPublished = true,
+  content: contact = DEFAULT_SITE_CONTACT,
 }: {
-  initialContent?: SiteContactContent;
-  loadPublished?: boolean;
+  /** Published (or, in previews, saved draft) contact content loaded on the server. */
+  content?: SiteContactContent;
 } = {}) {
-  const [contact, setContact] = useState<SiteContactContent>(initialContent);
-
-  useEffect(() => {
-    if (!loadPublished) return;
-    const controller = new AbortController();
-    fetch("/api/content/site.contact", { signal: controller.signal })
-      .then(async (response): Promise<unknown> => response.ok ? response.json() : null)
-      .then((value) => {
-        if (!value) return;
-        setContact(coerceManagedContent("site.contact", value) as SiteContactContent);
-      })
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, [loadPublished]);
-
   return (
     <footer className="site-footer">
       <div className="site-shell site-footer__top">

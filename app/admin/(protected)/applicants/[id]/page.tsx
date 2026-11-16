@@ -23,8 +23,8 @@ function fileSize(value: number): string {
 }
 
 export default async function ApplicantDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const actor = await requireAdmin("/admin/applicants");
   const { id } = await params;
+  const actor = await requireAdmin(`/admin/applicants/${encodeURIComponent(id)}`);
   const accessTime = applicantRetentionRequestTime();
   const applicant = await getApplicantAdmin(id, accessTime);
   if (!applicant) notFound();

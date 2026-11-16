@@ -2,6 +2,7 @@ import Link from "next/link";
 import { EmptyState, PageHeader, StatusBadge, adminStyles as styles } from "@/components/admin/AdminUI";
 import { d1LikePattern } from "@/lib/d1-query";
 import { PUBLICATION_STATUSES, formatAdminDate, titleCaseStatus, type PublicationStatus } from "@/lib/admin-data";
+import { requireAdmin } from "@/lib/admin-auth";
 import { database } from "@/lib/platform";
 import { actionablePublicationWarnings } from "@/lib/publication-warnings";
 
@@ -28,6 +29,7 @@ export default async function PublicationsAdminPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireAdmin("/admin/publications");
   const params = await searchParams;
   const q = one(params.q).trim();
   const type = one(params.type);

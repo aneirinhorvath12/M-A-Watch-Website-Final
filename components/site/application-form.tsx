@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { trackAnalytics } from "./analytics-tracker";
 import { APPLICANT_RETENTION_DAYS } from "@/lib/data-policy";
 
@@ -11,22 +11,26 @@ type FieldErrors = Partial<Record<FieldName, string>>;
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
+const subscribeToNothing = () => () => undefined;
+
 export function ApplicationForm() {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const [session, setSession] = useState({ submissionKey: "", formStartedAt: "" });
+  // Set synchronously when the form mounts in the browser; always sent with the
+  // submission (the server requires formStartedAt for its timing check).
+  const sessionRef = useRef<{ submissionKey: string; formStartedAt: string } | null>(null);
+  // False during SSR and until hydration, so the submit button stays disabled
+  // until the handler (and the session values above) are in place.
+  const hydrated = useSyncExternalStore(subscribeToNothing, () => true, () => false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      setSession({
-        submissionKey: crypto.randomUUID(),
-        formStartedAt: String(Date.now()),
-      });
-    }, 0);
-    return () => window.clearTimeout(timer);
+    sessionRef.current ??= {
+      submissionKey: crypto.randomUUID(),
+      formStartedAt: String(Date.now()),
+    };
   }, []);
 
   const validate = (form: FormData): FieldErrors => {
@@ -68,13 +72,14 @@ export function ApplicationForm() {
     event.preventDefault();
     if (submitting) return;
 
+    const session = sessionRef.current;
+    if (!session) {
+      setMessage("The form is still loading. Please try again in a moment.");
+      return;
+    }
     const form = new FormData(event.currentTarget);
-    if (!form.get("submissionKey")) {
-      form.set("submissionKey", session.submissionKey || crypto.randomUUID());
-    }
-    if (!form.get("formStartedAt")) {
-      form.set("formStartedAt", session.formStartedAt || String(Date.now() - 2_000));
-    }
+    form.set("submissionKey", session.submissionKey);
+    form.set("formStartedAt", session.formStartedAt);
     const clientErrors = validate(form);
     setErrors(clientErrors);
     setMessage("");
@@ -137,8 +142,6 @@ export function ApplicationForm() {
 
   return (
     <form ref={formRef} className="application-form" onSubmit={handleSubmit} noValidate encType="multipart/form-data">
-      <input type="hidden" name="submissionKey" value={session.submissionKey} />
-      <input type="hidden" name="formStartedAt" value={session.formStartedAt} />
       <div className="form-honeypot" aria-hidden="true">
         <label htmlFor="website">Leave this field empty</label>
         <input id="website" name="website" type="text" tabIndex={-1} autoComplete="off" />
@@ -208,7 +211,7 @@ export function ApplicationForm() {
 
       <div className="form-submit-row">
         <p className="form-status" role="status" aria-live="polite">{message}</p>
-        <button className="button button--primary" type="submit" disabled={submitting || !session.submissionKey}>
+        <button className="button button--primary" type="submit" disabled={submitting || !hydrated}>
           {submitting ? "Submitting…" : "Submit application"}
           {!submitting ? <span aria-hidden="true">→</span> : null}
         </button>

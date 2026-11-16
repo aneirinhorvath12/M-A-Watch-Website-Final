@@ -108,6 +108,28 @@ function TextField({
   );
 }
 
+let listKeyCounter = 0;
+
+function createListKey(): string {
+  listKeyCounter += 1;
+  return `list-item-${listKeyCounter}`;
+}
+
+/**
+ * Stable React keys for an editable list, kept alongside (not inside) the
+ * persisted items so the saved content shape is unchanged. Call the matching
+ * helper whenever an item is added, removed or moved.
+ */
+function useListKeys(initialLength: number) {
+  const [keys, setKeys] = useState(() => Array.from({ length: initialLength }, createListKey));
+  return {
+    keyAt: (index: number) => keys[index] ?? `list-item-pending-${index}`,
+    append: () => setKeys((current) => [...current, createListKey()]),
+    remove: (index: number) => setKeys((current) => current.filter((_, itemIndex) => itemIndex !== index)),
+    move: (from: number, to: number) => setKeys((current) => move(current, from, to)),
+  };
+}
+
 function Card({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
   return (
     <div className={styles.contentCard}>
@@ -157,6 +179,9 @@ function HomepageEditor({
   const setResearch = (research: HomepageEditorialContent["research"]) => update({ ...value, research });
   const setImpact = (impact: HomepageEditorialContent["impact"]) => update({ ...value, impact });
   const setApplication = (application: HomepageEditorialContent["application"]) => update({ ...value, application });
+  const disciplineKeys = useListKeys(value.hero.disciplines.length);
+  const areaKeys = useListKeys(value.research.areas.length);
+  const statKeys = useListKeys(value.impact.stats.length);
   return (
     <div className={styles.contentFields}>
       <Card title="Search metadata">
@@ -177,12 +202,12 @@ function HomepageEditor({
           <Card title="Research disciplines">
             <div className={styles.contentFields}>
               {value.hero.disciplines.map((discipline, index) => (
-                <div className={styles.formGrid} key={`discipline-${index}`}>
+                <div className={styles.formGrid} key={disciplineKeys.keyAt(index)}>
                   <div className={styles.fieldHalf}><InputField label={`Discipline ${index + 1}`} value={discipline} maxLength={40} onChange={(next) => setHero({ ...value.hero, disciplines: replaceAt(value.hero.disciplines, index, next) })} /></div>
-                  <div className={styles.fieldQuarter}><button className={styles.buttonDanger} type="button" disabled={value.hero.disciplines.length === 1} onClick={() => setHero({ ...value.hero, disciplines: value.hero.disciplines.filter((_, itemIndex) => itemIndex !== index) })}>Remove</button></div>
+                  <div className={styles.fieldQuarter}><button className={styles.buttonDanger} type="button" disabled={value.hero.disciplines.length === 1} onClick={() => { disciplineKeys.remove(index); setHero({ ...value.hero, disciplines: value.hero.disciplines.filter((_, itemIndex) => itemIndex !== index) }); }}>Remove</button></div>
                 </div>
               ))}
-              <button className={styles.buttonSecondary} type="button" disabled={value.hero.disciplines.length >= 8} onClick={() => setHero({ ...value.hero, disciplines: [...value.hero.disciplines, "New discipline"] })}>Add discipline</button>
+              <button className={styles.buttonSecondary} type="button" disabled={value.hero.disciplines.length >= 8} onClick={() => { disciplineKeys.append(); setHero({ ...value.hero, disciplines: [...value.hero.disciplines, "New discipline"] }); }}>Add discipline</button>
             </div>
           </Card>
           <Card title="Featured research note">
@@ -230,13 +255,16 @@ function HomepageEditor({
           {value.research.areas.map((area, index) => (
             <Card
               title={`Research area ${index + 1}`}
-              key={`research-area-${index}`}
+              key={areaKeys.keyAt(index)}
               actions={
                 <button
                   className={styles.buttonDanger}
                   type="button"
                   disabled={value.research.areas.length === 1}
-                  onClick={() => setResearch({ ...value.research, areas: value.research.areas.filter((_, itemIndex) => itemIndex !== index) })}
+                  onClick={() => {
+                    areaKeys.remove(index);
+                    setResearch({ ...value.research, areas: value.research.areas.filter((_, itemIndex) => itemIndex !== index) });
+                  }}
                 >
                   Remove
                 </button>
@@ -256,10 +284,13 @@ function HomepageEditor({
             className={styles.buttonSecondary}
             type="button"
             disabled={value.research.areas.length >= 6}
-            onClick={() => setResearch({
-              ...value.research,
-              areas: [...value.research.areas, { number: String(value.research.areas.length + 1).padStart(2, "0"), label: "New area", title: "New research area", body: "Add a short description.", href: "/reports/strategic", linkLabel: "Explore research" }],
-            })}
+            onClick={() => {
+              areaKeys.append();
+              setResearch({
+                ...value.research,
+                areas: [...value.research.areas, { number: String(value.research.areas.length + 1).padStart(2, "0"), label: "New area", title: "New research area", body: "Add a short description.", href: "/reports/strategic", linkLabel: "Explore research" }],
+              });
+            }}
           >
             Add research area
           </button>
@@ -278,8 +309,8 @@ function HomepageEditor({
           {value.impact.stats.map((stat, index) => (
             <Card
               title={`Statistic ${index + 1}`}
-              key={`impact-stat-${index}`}
-              actions={<button className={styles.buttonDanger} type="button" disabled={value.impact.stats.length === 1} onClick={() => setImpact({ ...value.impact, stats: value.impact.stats.filter((_, itemIndex) => itemIndex !== index) })}>Remove</button>}
+              key={statKeys.keyAt(index)}
+              actions={<button className={styles.buttonDanger} type="button" disabled={value.impact.stats.length === 1} onClick={() => { statKeys.remove(index); setImpact({ ...value.impact, stats: value.impact.stats.filter((_, itemIndex) => itemIndex !== index) }); }}>Remove</button>}
             >
               <div className={styles.formGrid}>
                 <div className={styles.fieldThird}><InputField label="Value" value={stat.value} maxLength={24} onChange={(statValue) => setImpact({ ...value.impact, stats: replaceAt(value.impact.stats, index, { ...stat, value: statValue }) })} /></div>
@@ -287,7 +318,7 @@ function HomepageEditor({
               </div>
             </Card>
           ))}
-          <button className={styles.buttonSecondary} type="button" disabled={value.impact.stats.length >= 8} onClick={() => setImpact({ ...value.impact, stats: [...value.impact.stats, { value: "0", label: "New statistic" }] })}>Add statistic</button>
+          <button className={styles.buttonSecondary} type="button" disabled={value.impact.stats.length >= 8} onClick={() => { statKeys.append(); setImpact({ ...value.impact, stats: [...value.impact.stats, { value: "0", label: "New statistic" }] }); }}>Add statistic</button>
         </div>
       </Card>
 
@@ -431,6 +462,7 @@ function InfoImageUpload({
 
 function InfoEditor({ value, update }: { value: InfoPageContent; update: (value: InfoPageContent) => void }) {
   const [newType, setNewType] = useState<InfoContentBlock["type"]>("paragraph");
+  const blockKeys = useListKeys(value.blocks.length);
   return (
     <div className={styles.contentFields}>
       <Card title="Search metadata">
@@ -451,18 +483,18 @@ function InfoEditor({ value, update }: { value: InfoPageContent; update: (value:
         <select className={styles.select} value={newType} onChange={(event) => setNewType(event.target.value as InfoContentBlock["type"])}>
           <option value="heading">Heading</option><option value="paragraph">Paragraph</option><option value="image">Image</option><option value="link">Link</option><option value="cta">Call to action</option>
         </select>
-        <button className={styles.buttonSecondary} type="button" disabled={value.blocks.length >= 18} onClick={() => update({ ...value, blocks: [...value.blocks, blankInfoBlock(newType)] })}>Add block</button>
+        <button className={styles.buttonSecondary} type="button" disabled={value.blocks.length >= 18} onClick={() => { blockKeys.append(); update({ ...value, blocks: [...value.blocks, blankInfoBlock(newType)] }); }}>Add block</button>
         <span className={styles.hint}>{value.blocks.length} of 18 blocks used.</span>
       </div>
       {value.blocks.map((block, index) => (
         <Card
           title={`${index + 1}. ${block.type === "cta" ? "Call to action" : block.type[0].toUpperCase() + block.type.slice(1)}`}
-          key={`${index}-${block.type}`}
+          key={blockKeys.keyAt(index)}
           actions={
             <>
-              <button className={styles.buttonQuiet} type="button" disabled={index === 0} onClick={() => update({ ...value, blocks: move(value.blocks, index, index - 1) })}>Move up</button>
-              <button className={styles.buttonQuiet} type="button" disabled={index === value.blocks.length - 1} onClick={() => update({ ...value, blocks: move(value.blocks, index, index + 1) })}>Move down</button>
-              <button className={styles.buttonDanger} type="button" disabled={value.blocks.length === 1} onClick={() => update({ ...value, blocks: value.blocks.filter((_, itemIndex) => itemIndex !== index) })}>Remove</button>
+              <button className={styles.buttonQuiet} type="button" disabled={index === 0} onClick={() => { blockKeys.move(index, index - 1); update({ ...value, blocks: move(value.blocks, index, index - 1) }); }}>Move up</button>
+              <button className={styles.buttonQuiet} type="button" disabled={index === value.blocks.length - 1} onClick={() => { blockKeys.move(index, index + 1); update({ ...value, blocks: move(value.blocks, index, index + 1) }); }}>Move down</button>
+              <button className={styles.buttonDanger} type="button" disabled={value.blocks.length === 1} onClick={() => { blockKeys.remove(index); update({ ...value, blocks: value.blocks.filter((_, itemIndex) => itemIndex !== index) }); }}>Remove</button>
             </>
           }
         >
@@ -474,6 +506,7 @@ function InfoEditor({ value, update }: { value: InfoPageContent; update: (value:
 }
 
 function ContactEditor({ value, update }: { value: SiteContactContent; update: (value: SiteContactContent) => void }) {
+  const socialKeys = useListKeys(value.socialLinks.length);
   return (
     <div className={styles.contentFields}>
       <TextField label="Footer description" value={value.body} maxLength={1000} onChange={(body) => update({ ...value, body })} />
@@ -484,14 +517,14 @@ function ContactEditor({ value, update }: { value: SiteContactContent; update: (
       <Card title="Social channels">
         <div className={styles.contentFields}>
           {value.socialLinks.length ? value.socialLinks.map((social, index) => (
-            <Card title={`Social link ${index + 1}`} key={`social-link-${index}`} actions={<button className={styles.buttonDanger} type="button" onClick={() => update({ ...value, socialLinks: value.socialLinks.filter((_, itemIndex) => itemIndex !== index) })}>Remove</button>}>
+            <Card title={`Social link ${index + 1}`} key={socialKeys.keyAt(index)} actions={<button className={styles.buttonDanger} type="button" onClick={() => { socialKeys.remove(index); update({ ...value, socialLinks: value.socialLinks.filter((_, itemIndex) => itemIndex !== index) }); }}>Remove</button>}>
               <div className={styles.formGrid}>
                 <div className={styles.fieldHalf}><InputField label="Label" value={social.label} maxLength={60} onChange={(label) => update({ ...value, socialLinks: replaceAt(value.socialLinks, index, { ...social, label }) })} /></div>
                 <div className={styles.fieldHalf}><InputField label="HTTPS URL" type="url" value={social.href} maxLength={500} onChange={(href) => update({ ...value, socialLinks: replaceAt(value.socialLinks, index, { ...social, href }) })} /></div>
               </div>
             </Card>
           )) : <p className={styles.hint}>No social links are currently shown.</p>}
-          <button className={styles.buttonSecondary} type="button" disabled={value.socialLinks.length >= 6} onClick={() => update({ ...value, socialLinks: [...value.socialLinks, { label: "LinkedIn", href: "https://www.linkedin.com/" }] })}>Add social link</button>
+          <button className={styles.buttonSecondary} type="button" disabled={value.socialLinks.length >= 6} onClick={() => { socialKeys.append(); update({ ...value, socialLinks: [...value.socialLinks, { label: "LinkedIn", href: "https://www.linkedin.com/" }] }); }}>Add social link</button>
         </div>
       </Card>
     </div>
@@ -560,7 +593,11 @@ function ContentEditor({ entry }: { entry: ManagedEditorEntry }) {
         )}
         <div className={styles.contentActions}>
           <button className={styles.buttonSecondary} type="button" disabled={Boolean(pending)} onClick={() => void submit("save")}>{pending === "save" ? "Saving…" : "Save draft"}</button>
-          <Link className={styles.buttonSecondary} href={entry.previewHref} target="_blank">Preview saved draft</Link>
+          {dirty ? (
+            <button className={styles.buttonSecondary} type="button" disabled title="Save your changes before previewing them.">Preview saved draft</button>
+          ) : (
+            <Link className={styles.buttonSecondary} href={entry.previewHref} target="_blank">Preview saved draft</Link>
+          )}
           <button className={styles.button} type="button" disabled={Boolean(pending) || dirty} onClick={() => void submit("publish")}>{pending === "publish" ? "Publishing…" : "Publish saved draft"}</button>
           {dirty ? <span className={styles.hint}>Save your changes before previewing or publishing them.</span> : null}
         </div>

@@ -90,11 +90,15 @@ export async function DELETE(
   await db.batch([
     db
       .prepare(
+        // A failed deletion (e.g. one queued by retention, which records no
+        // requester) is re-queued by this administrator, so record them as
+        // the requester; otherwise non-retention reasons fail permanently.
         `UPDATE applicants
-         SET deletion_requested_at = ?, deletion_requested_by = ?, updated_at = ?
-         WHERE id = ? AND deletion_requested_at IS NULL`,
+         SET deletion_requested_at = COALESCE(deletion_requested_at, ?),
+             deletion_requested_by = ?, updated_at = ?
+         WHERE id = ? AND (deletion_requested_at IS NULL OR ? = 1)`,
       )
-      .bind(now, auth.actor.id, now, id),
+      .bind(now, auth.actor.id, now, id, requeueFailedDeletion ? 1 : 0),
     db
       .prepare(
         `INSERT INTO background_jobs

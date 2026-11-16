@@ -4,6 +4,7 @@ import {
   type ManagedEditorEntry,
 } from "@/components/admin/ManagedContentEditor";
 import { adminStyles as styles, PageHeader } from "@/components/admin/AdminUI";
+import { requireAdmin } from "@/lib/admin-auth";
 import { database, safeJson } from "@/lib/platform";
 import {
   coerceManagedContent,
@@ -111,6 +112,7 @@ export default async function ContentPage({
 }: {
   searchParams: Promise<{ section?: string }>;
 }) {
+  await requireAdmin("/admin/content");
   const params = await searchParams;
   const selectedWorkspace = contentWorkspace(params.section);
   const rows = await database()

@@ -193,3 +193,38 @@ function streamingRequest(
   };
   return new Request("https://mawatch.org/upload", init);
 }
+
+test("PDF active-content scan covers the whole file, escaped names and compressed object streams", async () => {
+  const { pdfContainsActiveContent } = await import("../lib/security-helpers.ts");
+  const { zlibSync } = await import("fflate");
+  const { readFileSync, readdirSync } = await import("node:fs");
+  const encoder = new TextEncoder();
+  const join = (...parts: Uint8Array[]) => {
+    const out = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
+    let offset = 0;
+    for (const part of parts) {
+      out.set(part, offset);
+      offset += part.length;
+    }
+    return out;
+  };
+
+  for (const name of readdirSync("public/sample-reports")) {
+    const bytes = new Uint8Array(readFileSync(`public/sample-reports/${name}`));
+    assert.equal(pdfContainsActiveContent(bytes), false, `${name} should be accepted`);
+  }
+
+  const hidden = zlibSync(encoder.encode("1 0 << /OpenAction << /S /JavaScript /JS (app.alert(1)) >> >>"));
+  const objectStream = join(
+    encoder.encode(`%PDF-1.7\n5 0 obj << /Type /ObjStm /N 1 /First 4 /Filter /FlateDecode /Length ${hidden.length} >>\nstream\n`),
+    hidden,
+    encoder.encode("\nendstream\nendobj\n"),
+  );
+  assert.equal(pdfContainsActiveContent(objectStream), true);
+  assert.equal(pdfContainsActiveContent(encoder.encode("%PDF-1.7 /J#61vaScript")), true);
+  assert.equal(
+    pdfContainsActiveContent(join(encoder.encode("%PDF-1.7"), new Uint8Array(3_000_000).fill(32), encoder.encode("/Launch"))),
+    true,
+  );
+  assert.equal(pdfContainsActiveContent(encoder.encode("%PDF-1.7 /JSONData /Launcher")), false);
+});

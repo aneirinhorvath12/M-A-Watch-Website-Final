@@ -3035,3 +3035,89 @@ input[type="file"] {
 .featured-card--legal .featured-card__visual {
   background: #3b7b8c;
 }
+
+/* Density: a tighter vertical rhythm across the site. */
+:root {
+  --section-space: clamp(3.5rem, 6.5vw, 6rem);
+}
+
+.section-heading {
+  margin-bottom: clamp(2rem, 3.5vw, 3rem);
+}
+
+.home-hero__grid {
+  min-height: min(38rem, calc(100vh - 7.35rem));
+  gap: clamp(2.5rem, 6vw, 6rem);
+  padding-top: clamp(3rem, 5.5vw, 5rem);
+  padding-bottom: clamp(1.25rem, 2.5vw, 2rem);
+}
+
+.home-hero__lede {
+  margin-block: 1.5rem 1.75rem;
+}
+
+.home-hero__disciplines {
+  margin-top: clamp(1.75rem, 3vw, 2.5rem);
+}
+
+.brand-wave__curve {
+  height: clamp(3.5rem, 8vw, 7.5rem);
+}
+
+.home-intro__grid,
+.team-overview__grid {
+  gap: clamp(2.5rem, 6vw, 6rem);
+}
+
+.area-card {
+  min-height: 24rem;
+}
+
+.impact-section__grid,
+.home-cta__panel {
+  gap: clamp(2.5rem, 6vw, 6rem);
+}
+
+.page-intro__grid {
+  min-height: clamp(20rem, 38vw, 28rem);
+  gap: clamp(2.5rem, 6vw, 6rem);
+  padding-block: clamp(3.5rem, 6.5vw, 5.5rem);
+}
+
+.info-managed__cta {
+  gap: clamp(2.5rem, 6vw, 6rem);
+  margin-top: clamp(3rem, 6vw, 5rem);
+}
+
+.team-group {
+  padding-block: clamp(3rem, 6vw, 5rem);
+}
+
+.inline-cta {
+  padding-block: clamp(3.5rem, 7vw, 6rem);
+}
+
+.site-footer__top {
+  gap: clamp(3rem, 6vw, 6rem);
+  padding-block: clamp(3.5rem, 6vw, 5rem);
+}
+
+.footer-wordmark {
+  margin-top: clamp(1.5rem, 4vw, 3.5rem);
+}
+
+.brand-values__heading {
+  margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+.confirmation-page {
+  padding-block: clamp(3.5rem, 8vw, 7rem);
+}
+
+.not-found-page {
+  padding-block: clamp(4rem, 9vw, 8rem);
+}
+
+@media (max-width: 860px) {
+  :root { --section-space: 3.25rem; }
+}

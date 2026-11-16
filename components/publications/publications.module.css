@@ -66,9 +66,9 @@
 .collectionHeroGrid {
   align-items: end;
   display: grid;
-  gap: 2rem clamp(3rem, 9vw, 9rem);
+  gap: 2rem clamp(2.5rem, 7vw, 6.5rem);
   grid-template-columns: minmax(0, 1.25fr) minmax(18rem, 0.75fr);
-  padding-bottom: clamp(3rem, 7vw, 6.5rem);
+  padding-bottom: clamp(2.5rem, 5vw, 4.5rem);
 }
 
 .eyebrow,
@@ -146,7 +146,7 @@
 }
 
 .collectionContent {
-  padding-block: clamp(2.5rem, 6vw, 6rem) clamp(5rem, 10vw, 10rem);
+  padding-block: clamp(2rem, 4.5vw, 4rem) clamp(3.5rem, 7vw, 6.5rem);
 }
 
 .filterForm {
@@ -526,7 +526,7 @@
   border: 1px solid var(--pub-line);
   display: flex;
   flex-direction: column;
-  padding: clamp(4rem, 9vw, 8rem) 1.5rem;
+  padding: clamp(3rem, 6vw, 5.5rem) 1.5rem;
   text-align: center;
 }
 
@@ -626,7 +626,7 @@
 
 .breadcrumbsLight {
   color: #fff;
-  margin-bottom: clamp(3rem, 7vw, 6.5rem);
+  margin-bottom: clamp(2.25rem, 5vw, 4.5rem);
   position: relative;
   z-index: 1;
 }
@@ -634,7 +634,7 @@
 .articleHeroGrid {
   align-items: end;
   display: grid;
-  gap: clamp(3rem, 8vw, 8rem);
+  gap: clamp(2.5rem, 6vw, 5.5rem);
   grid-template-columns: minmax(0, 1.5fr) minmax(16rem, 0.5fr);
   position: relative;
   z-index: 1;
@@ -777,7 +777,7 @@
   grid-template-columns: minmax(13rem, 0.34fr) minmax(0, 0.66fr);
   margin: 0 auto;
   max-width: 1120px;
-  padding: clamp(4rem, 9vw, 9rem) clamp(1.15rem, 4vw, 4.5rem);
+  padding: clamp(3rem, 6vw, 6rem) clamp(1.15rem, 4vw, 4.5rem);
 }
 
 .articleRail {
@@ -1159,7 +1159,7 @@
 
 .relatedSection {
   background: var(--pub-surface);
-  padding-block: clamp(4.5rem, 9vw, 8rem);
+  padding-block: clamp(3.25rem, 6vw, 5.5rem);
 }
 
 .relatedHeader .eyebrow {
@@ -1183,9 +1183,9 @@
 .marketsHeroGrid {
   align-items: center;
   display: grid;
-  gap: clamp(3rem, 9vw, 9rem);
+  gap: clamp(2.5rem, 6vw, 6rem);
   grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.55fr);
-  padding-bottom: clamp(3rem, 7vw, 6rem);
+  padding-bottom: clamp(2.5rem, 5vw, 4rem);
   position: relative;
   z-index: 1;
 }
@@ -1262,7 +1262,7 @@
 }
 
 .pdfViewerSection {
-  padding-block: clamp(4rem, 9vw, 8rem);
+  padding-block: clamp(3rem, 6vw, 5.5rem);
 }
 
 .pdfViewerHeader {
